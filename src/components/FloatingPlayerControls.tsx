@@ -17,6 +17,8 @@ import { PLAYER_BOTTOM_BAR_BASE_OFFSET_PX, clampPlayerBottomBarOffset, resolvePl
 import type { PlayerControlSlotActionId, PlayerControlSlotContext } from './floating-player/playerControlSlotActions';
 import { usePlayerOverlayObstacle } from '../hooks/usePlayerOverlayLayout';
 import { resolveLyricSeekMediaTime } from '../utils/lyrics/lyricSeekTime';
+import HifiBadge from './hifi/HifiBadge';
+import { useIsHifiRoute } from './hifi/useHifiSignalPath';
 
 export interface TrackNavigation {
     /** 当前曲目的稳定身份，用于识别「确实换歌了」；相邻两首同名时标题字符串不变，不能拿标题判断 */
@@ -507,6 +509,19 @@ const ExpandedView: React.FC<ExpandedViewProps> = ({
     slotSecondary,
     slotContext,
 }) => {
+    const isHifiRoute = useIsHifiRoute();
+    const progressBar = (
+        <ProgressBar
+            currentTime={currentTime}
+            duration={duration}
+            onSeek={onSeek}
+            primaryColor={primaryColor}
+            secondaryColor={secondaryColor}
+            trackColor={trackColor}
+            disabled={controlsDisabled}
+        />
+    );
+
     return (
         <div className="grid w-full grid-cols-[1fr_auto_1fr] items-center gap-x-4 gap-y-2 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
             {/* Desktop Layout - responsive grid positions apply from the sm breakpoint */}
@@ -578,16 +593,14 @@ const ExpandedView: React.FC<ExpandedViewProps> = ({
             </div>
 
             {/* Row 2: Current Time, Progress Bar, Duration */}
-            <div className="col-span-3 row-start-3 w-full px-2 sm:col-start-2 sm:col-span-1 sm:row-start-2">
-                <ProgressBar
-                    currentTime={currentTime}
-                    duration={duration}
-                    onSeek={onSeek}
-                    primaryColor={primaryColor}
-                    secondaryColor={secondaryColor}
-                    trackColor={trackColor}
-                    disabled={controlsDisabled}
-                />
+            {/* HiFi 路线上时长后面多一块 HiFi 徽标；Web 路线和原来一模一样。 */}
+            <div className={`col-span-3 row-start-3 w-full px-2 sm:col-start-2 sm:col-span-1 sm:row-start-2${isHifiRoute ? ' flex items-center gap-2' : ''}`}>
+                {isHifiRoute ? (
+                    <>
+                        <div className="min-w-0 flex-1">{progressBar}</div>
+                        <HifiBadge isDaylight={isDaylight} disabled={controlsDisabled} />
+                    </>
+                ) : progressBar}
             </div>
         </div>
     );

@@ -703,6 +703,8 @@ export function useLibraryPlaybackController({
                 setStatusMsg({ type: 'error', text: t('status.localFileAccessError') || '' });
                 notifyPlaybackFailed({ song: toReportedLocalSong(localSong), reason: null, phase: 'play', willAutoSkip: false });
             }
+            // The song before plays on: its play is no longer overtaken (`onceShown` in currentSong.ts).
+            stillWanted.abandon();
             return;
         }
 
@@ -714,6 +716,7 @@ export function useLibraryPlaybackController({
         const givesUp = () => {
             if (stillWanted()) return false;
             if (blobUrl) URL.revokeObjectURL(blobUrl);
+            stillWanted.abandon();
             return true;
         };
         if (givesUp()) return;
@@ -750,7 +753,7 @@ export function useLibraryPlaybackController({
                 song: initialMeta.unifiedSong,
                 source: { kind: 'local', localSong: preparedLocalSong, file: audio.file },
                 startSec: start.startAtSec,
-                stillWanted,
+                stillWanted: stillWanted.onceShown,
             });
         } else {
             setAudioSrc(playbackUrl);
@@ -888,11 +891,14 @@ export function useLibraryPlaybackController({
         if (!config) {
             setStatusMsg({ type: 'error', text: 'Navidrome not configured' });
             notifyPlaybackFailed({ song: navidromeSong, reason: null, phase: 'play', willAutoSkip: false });
+            stillWanted.abandon();
             return;
         }
 
         setIsLyricsLoading(true);
         const ownMark = lyricsLoadingWritesRef.current;
+        // Until the song is shown, a play that stops here gave up (see `abandon` in currentSong.ts).
+        let shown = false;
         // A newer play started, or the plays in flight were dropped, while this one waited: nothing
         // of this song is written. The loading mark set above does not stay behind, but it is
         // cleared only while it is still this play's: once anyone wrote the mark since (a newer
@@ -900,6 +906,7 @@ export function useLibraryPlaybackController({
         const givesUp = () => {
             if (stillWanted()) return false;
             if (lyricsLoadingWritesRef.current === ownMark) setIsLyricsLoading(false);
+            if (!shown) stillWanted.abandon();
             return true;
         };
 
@@ -1079,6 +1086,7 @@ export function useLibraryPlaybackController({
             setCurrentLineIndex(-1);
             currentTime.set(start.startAtSec);
             showSong(unifiedSong);
+            shown = true;
             setManagedCachedCoverUrl(coverUrl ?? null);
             if (onHifi) {
                 // No blob URL plays on this route: the one a local song before left is handed over now.
@@ -1089,7 +1097,7 @@ export function useLibraryPlaybackController({
                     song: unifiedSong,
                     source: { kind: 'navidrome', carrier: navidromeSong, streamUrl: audio.rawStreamUrl() },
                     startSec: start.startAtSec,
-                    stillWanted,
+                    stillWanted: stillWanted.onceShown,
                 });
             } else {
                 setAudioSrc(recoveredRepresentation?.url ?? audio.streamUrl);
@@ -1123,6 +1131,7 @@ export function useLibraryPlaybackController({
             console.error('[App] Failed to play Navidrome song:', error);
             // No longer wanted: the failure is not said over the song that plays now, nor told.
             if (givesUp()) return;
+            if (!shown) stillWanted.abandon();
             setStatusMsg({ type: 'error', text: t('status.playbackFailed')});
             setIsLyricsLoading(false);
             // The Navidrome carrier itself is told (it is the SongResult playSong knows): a unified song

@@ -24,6 +24,7 @@ import { usePlayerChromeSettingsStore } from '../../../../stores/usePlayerChrome
 import { currentTime } from '../../../../stores/motionSignals';
 import { untransformedLyrics } from '../../../../services/hostExtensionHooks';
 import { reportYieldedQueue, wholeQueueWritesSoFar } from '../../../../services/wholeQueueWrites';
+import { getHifiPosition, isHifiRoute } from '../../../../services/hifi/hifiPlayback';
 
 // src/components/app/playback/restore/useElectronWindowPlaybackHandoff.ts
 // Captures and restores renderer playback state across Electron BrowserWindow rebuilds.
@@ -99,7 +100,8 @@ const buildPlaybackSnapshot = ({
     playQueue,
     isFmMode,
     playerState,
-    currentTime: audioRef.current?.currentTime ?? currentTime.get(),
+    // On the HiFi route <audio> sits idle: the position is mpv's, as its clock reads it now.
+    currentTime: isHifiRoute() ? getHifiPosition() : (audioRef.current?.currentTime ?? currentTime.get()),
     duration,
     currentLineIndex,
 });
@@ -313,6 +315,7 @@ export function useElectronWindowPlaybackHandoff({
             stillWanted,
             hasFallbackSource: fallbackAudioSrc !== null,
             queueWritesAtStart,
+            pendingResumeTimeRef,
         }).catch((error): RestorePlaybackSourceOutcome => {
             console.warn('[Electron] Failed to restore window playback handoff source', error);
             return 'failed';

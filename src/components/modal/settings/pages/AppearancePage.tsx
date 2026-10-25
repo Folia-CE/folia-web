@@ -9,6 +9,8 @@ import { useVisualizerSettingsStore } from '../../../../stores/useVisualizerSett
 import { Button, Group, Reveal, Row, Segmented, Toggle, Value, option, type SettingsGroupDef, type SettingsOptionDef } from '../kit';
 import { settingsAnchorSubview } from '../navigation/settingsAnchorModel';
 import AiProviderSettings, { AI_SETTINGS_OPTIONS } from './ai/AiProviderSettings';
+import CloudCacheSettings from './ai/CloudCacheSettings';
+import { CLOUD_CACHE_OPTIONS, isCloudCacheSettingsVisible } from './ai/cloudCacheOptions';
 import { useSettingsPage } from './settingsPageContext';
 
 // src/components/modal/settings/pages/AppearancePage.tsx
@@ -33,7 +35,7 @@ const O = {
 
 };
 
-export const OPTIONS: SettingsOptionDef[] = [...Object.values(O), ...AI_SETTINGS_OPTIONS];
+export const OPTIONS: SettingsOptionDef[] = [...Object.values(O), ...AI_SETTINGS_OPTIONS, ...CLOUD_CACHE_OPTIONS];
 
 type DaylightChoice = 'light' | 'dark' | 'system';
 
@@ -134,6 +136,8 @@ const AppearancePage: React.FC = () => {
             </Group>
 
             {isElectron && <AiProviderSettings />}
+            {/* 云缓存：只有网页版画。桌面端主题由主进程生成，这层浏览器缓存用不上。 */}
+            {isCloudCacheSettingsVisible() && <CloudCacheSettings />}
         </>
     );
 };

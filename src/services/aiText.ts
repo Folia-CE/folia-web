@@ -2,6 +2,11 @@ import { DualTheme } from "../types";
 import { applyStoredAnimationIntensityToDualTheme } from "./themePreferences";
 import { sanitizeDualTheme } from "./themeSanitizer";
 import { getWebAiProvider, type WebAiProvider } from "./runtimeConfig";
+import {
+  fingerprintLyricSource,
+  fingerprintLyricText,
+  withAiCloudCache,
+} from "./aiCloudCache";
 export {
   AI_PROVIDER_PRESETS,
   inferAiProviderFromUrl,
@@ -70,31 +75,70 @@ export const generateThemeFromLyrics = async (
   options?: { isPureMusic?: boolean; songTitle?: string }
 ): Promise<DualTheme> => {
   try {
-    // Check if running in Electron environment
-    if ((window as any).electron && typeof (window as any).electron.generateTheme === 'function') {
-      const dualTheme = await (window as any).electron.generateTheme(lyricsText, options);
-      return sanitizeDualTheme(dualTheme);
-    }
-
-    const response = await fetch(themeRoute(getWebAiProvider()), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
+    // 云缓存：先问「这份歌词有没有人生成过」。
+    //
+    // 命中就直接用别人的答案 —— 这对**没填 Key 的人**是关键：他本来一个主题都生成不出来，
+    // 能命中别人的结果就是白赚。缓存永不阻塞功能，所以下面所有失败都只是「没命中」。
+    //
+    // 纯音乐喂给模型的是歌名而不是歌词正文，指纹与上传的 lyricHash 都跟着走同一个口径，
+    // 否则纯音乐会与它的歌词版本互相当成两首歌。
+    const cacheSource = options?.isPureMusic
+      ? `pure:${options?.songTitle ?? ''}`
+      : lyricsText;
+    // `stage` 是线上那台服务实际存放主题的 kind（详见 aiCloudCache.ts 的说明）。
+    const fingerprint = fingerprintLyricSource('stage', cacheSource);
+    const { value: cached, source } = await withAiCloudCache<DualTheme>({
+      kind: 'stage',
+      fingerprint,
+      generate: () => generateThemeUncached(lyricsText, options),
+      validate: (value) => {
+        if (!value || typeof value !== 'object') return null;
+        try {
+          return applyStoredAnimationIntensityToDualTheme(sanitizeDualTheme(value as DualTheme));
+        } catch {
+          return null;
+        }
       },
-      body: JSON.stringify({ lyricsText, ...options }),
+      songTitle: options?.songTitle,
+      lyricHash: fingerprintLyricText(cacheSource),
+      isPureMusic: options?.isPureMusic,
     });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || 'Failed to generate theme');
+    if (source === 'cloud') {
+      console.info('[Folia] AI 主题：已从云端缓存取回');
     }
-
-    const dualTheme = await response.json();
-    return applyStoredAnimationIntensityToDualTheme(sanitizeDualTheme(dualTheme as DualTheme));
+    return cached;
   } catch (error) {
     console.error("Failed to generate theme via API:", error);
     throw error;
   }
+};
+
+/** 真正去要一次主题（缓存没有时才会走到这里）。 */
+const generateThemeUncached = async (
+  lyricsText: string,
+  options?: { isPureMusic?: boolean; songTitle?: string }
+): Promise<DualTheme> => {
+  // Check if running in Electron environment
+  if ((window as any).electron && typeof (window as any).electron.generateTheme === 'function') {
+    const dualTheme = await (window as any).electron.generateTheme(lyricsText, options);
+    return sanitizeDualTheme(dualTheme);
+  }
+
+  const response = await fetch(themeRoute(getWebAiProvider()), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ lyricsText, ...options }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.error || 'Failed to generate theme');
+  }
+
+  const dualTheme = await response.json();
+  return applyStoredAnimationIntensityToDualTheme(sanitizeDualTheme(dualTheme as DualTheme));
 };
 
 // The AI connection the web OBS overlay (Dynamic AI mode) generates a theme with. The overlay runs

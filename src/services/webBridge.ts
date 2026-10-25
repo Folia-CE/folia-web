@@ -17,8 +17,22 @@
 
 const BRIDGE_ROUTE = '/api/__folia_bridge';
 
-/** 这个网页是不是被 `server/static-server.mjs` 发出来的。 */
+/**
+ * 这个网页是不是被 `server/static-server.mjs` 发出来的。
+ */
 let bridgeAvailable: boolean | null = null;
+
+/**
+ * 桌面版里没有这个桥，也不该有。
+ *
+ * 桌面版的请求走主进程内的本地服务（`window.electron.getNeteasePort` 那一套），
+ * 或者走用户配的 `VITE_*_API_BASE`。没有这道判断的话，桌面版里只要有东西让探测
+ * 成功（打包时挂过去的静态服务、甚至一条被 mock 掉的 fetch），桥就会把桌面那条
+ * 更合适的路顶掉 —— 那是不该发生的事。
+ */
+const isDesktopShell = (): boolean => (
+    typeof window !== 'undefined' && Boolean((window as any).electron)
+);
 
 /**
  * 探测结果的同步镜像。
@@ -30,6 +44,11 @@ let bridgeAvailable: boolean | null = null;
 let bridgeAvailableSync = false;
 
 const probeBridge = async (): Promise<boolean> => {
+    // 桌面版一律不走这个桥（见 isDesktopShell）。
+    if (isDesktopShell()) return false;
+    // 已经配了后端地址就不探：那种部署本来就有自己的一套接口，桥只是没人用的备胎，
+    // 探它等于白白多发一条请求（在装了后端、又不想走桥的部署上尤其没有意义）。
+    if (hasAnyConfiguredApiBase()) return false;
     if (typeof fetch !== 'function') return false;
     try {
         const response = await fetch(BRIDGE_ROUTE, {
@@ -37,20 +56,51 @@ const probeBridge = async (): Promise<boolean> => {
             headers: { Accept: 'application/json' },
             cache: 'no-store',
         });
-        return response.ok;
+        // 一个答复都没有（或者不是 Response）：没有桥。
+        return Boolean(response?.ok);
     } catch {
         return false;
     }
 };
 
-if (typeof window !== 'undefined') {
-    // 不 await：失败也只是保持 false。真正的请求路径会再 await 一次 `isWebBridgeAvailable`，
-    // 所以这里只是让「界面上的可用性」尽早拿到答案。
-    void probeBridge().then((ready) => {
-        if (bridgeAvailable === null) bridgeAvailable = ready;
-        bridgeAvailableSync = ready;
-    });
-}
+/**
+ * 这个部署有没有自己配好后端地址（`VITE_*_API_BASE`）。
+ *
+ * 配了就不该走本地登录那条路 —— 用户明确指定了后端，桥只是没后端时的替代品。
+ * 这里只读环境变量，不发请求；两个来源都看（构建期是 `import.meta.env`，
+ * 测试与 Node 里是 `process.env`），与各家 transport 读地址的方式保持一致。
+ */
+const hasAnyConfiguredApiBase = (): boolean => {
+    const viteEnv = typeof import.meta !== 'undefined'
+        ? (import.meta as { env?: Record<string, string | undefined> }).env
+        : undefined;
+    const nodeEnv = typeof process !== 'undefined'
+        ? (process as { env?: Record<string, string | undefined> }).env
+        : undefined;
+    const read = (name: string): boolean => Boolean(viteEnv?.[name] || nodeEnv?.[name]);
+    return read('VITE_NETEASE_API_BASE') || read('VITE_QQ_API_BASE') || read('VITE_KUGOU_API_BASE');
+};
+
+/**
+ * 探测只发生一次，而且要等到真的有人问才发起。
+ *
+ * 早先这里是模块加载时就发一次 —— 那样每个 import 到这个模块的页面/测试都会多一条
+ * 网络请求，而其中绝大多数根本不碰在线音乐。现在改成「第一次用的时候探」：
+ * `isWebBridgeAvailable()` 会 await 它，`isWebBridgeAvailableSync()` 在探测回来之前
+ * 照旧答 `false`（与「静态托管在别处」的旧行为一致）。
+ */
+let probePromise: Promise<boolean> | null = null;
+
+const ensureProbe = (): Promise<boolean> => {
+    if (!probePromise) {
+        probePromise = probeBridge().then((ready) => {
+            if (bridgeAvailable === null) bridgeAvailable = ready;
+            bridgeAvailableSync = ready;
+            return ready;
+        });
+    }
+    return probePromise;
+};
 
 /**
  * 探测桥在不在。
@@ -59,10 +109,9 @@ if (typeof window !== 'undefined') {
  * 「需要自己配 API 地址」的老路，而不是让每一次请求都卡到超时。
  */
 export const isWebBridgeAvailable = async (): Promise<boolean> => {
+    if (isDesktopShell()) return false;
     if (bridgeAvailable !== null) return bridgeAvailable;
-    bridgeAvailable = await probeBridge();
-    bridgeAvailableSync = bridgeAvailable;
-    return bridgeAvailable;
+    return await ensureProbe();
 };
 
 /**
@@ -71,7 +120,10 @@ export const isWebBridgeAvailable = async (): Promise<boolean> => {
  * 模块加载时那次探测还没回来的时候是 `false`，界面第一条快照因此可能短暂地显示
  * 「未配置」；探测回来之后 store 的常规刷新就会翻过来。
  */
-export const isWebBridgeAvailableSync = (): boolean => bridgeAvailableSync;
+export const isWebBridgeAvailableSync = (): boolean => {
+    if (isDesktopShell()) return false;
+    return bridgeAvailableSync;
+};
 
 type BridgePayload = {
     provider: 'netease' | 'qq' | 'kugou' | 'bodian' | 'qq_raw';

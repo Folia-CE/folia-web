@@ -77,19 +77,39 @@ describe('a theme from lyrics', () => {
 
         const theme = await generateThemeFromLyrics('la la la', { isPureMusic: true, songTitle: 'Song' });
 
-        expect(requests).toEqual([{
-            url: route,
-            init: {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ lyricsText: 'la la la', isPureMusic: true, songTitle: 'Song' }),
-            },
-        }]);
+        // The web build asks the cloud cache first, then the route, then pushes what it got back:
+        // three requests, in that order. The cache is only ever a look-up around the same route.
+        const themeRequest = requests.find(request => request.url === route);
+        expect(themeRequest).toBeDefined();
+        expect(requests.map(request => request.init?.method ?? 'GET')).toEqual(['GET', 'POST', 'PUT']);
+        expect(themeRequest!.init).toEqual({
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lyricsText: 'la la la', isPureMusic: true, songTitle: 'Song' }),
+        });
         // The stored animation intensity is put on the answer on this route.
         expect(theme).toMatchObject({
             light: { name: 'Dawn', backgroundColor: '#fff8e7', animationIntensity: 'calm' },
             dark: { name: 'Night', backgroundColor: '#101820', animationIntensity: 'calm' },
         });
+    });
+
+    it('takes the cloud cache answer and never calls the route when the cache has it', async () => {
+        stubWebWindow('gemini');
+        const requests: RecordedRequest[] = [];
+        vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {
+            requests.push({ url, init });
+            // The cache: a hit, wrapped the way the service wraps it ({ theme, decision }).
+            return new Response(JSON.stringify({ ok: true, hit: true, entry: { payload: { theme: THEME_ANSWER } } }), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' },
+            });
+        });
+
+        const theme = await generateThemeFromLyrics('la la la', { isPureMusic: true, songTitle: 'Song' });
+
+        expect(requests.map(request => request.init?.method)).toEqual(['GET']);
+        expect(theme).toMatchObject({ light: { name: 'Dawn' }, dark: { name: 'Night' } });
     });
 
     it('on the web fails with the message the route answered', async () => {

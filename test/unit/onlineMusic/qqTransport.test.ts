@@ -56,13 +56,16 @@ describe('QQ Music Web transport', () => {
 
     it('reports unavailable when VITE_QQ_API_BASE is not configured', async () => {
         vi.stubEnv('VITE_QQ_API_BASE', '');
-        const fetchMock = vi.fn();
+        // 网页版会先探一次「本地登录桥在不在」；这个桩让它明确答「不在」。
+        const fetchMock = vi.fn().mockRejectedValue(new Error('offline'));
         vi.stubGlobal('fetch', fetchMock);
         const { getQqTransportAvailability, requestQq } = await import('@/services/onlineMusic/qq/qqTransport');
 
         expect(getQqTransportAvailability()).toEqual({ configured: false, reason: 'not-configured' });
         await expect(requestQq('login_qr_key')).rejects.toMatchObject({ code: 'unavailable' });
-        expect(fetchMock).not.toHaveBeenCalled();
+        // 只有那一次探测；没有任何请求打到 QQ 的接口上。
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/api/__folia_bridge');
     });
 
     // 没配后端地址是持久的：播放侧显示「未配置」，而不是让用户反复重试。

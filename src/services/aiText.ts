@@ -70,23 +70,38 @@ export const isMissingAiApiKeyError = (error: unknown) => {
       && /(?:not configured|missing|configure)/i.test(message));
 };
 
+/** 有没有桌面端那条「去主进程生成主题」的桥。有它就不走云缓存。 */
+const hasDesktopThemeBridge = (): boolean => (
+  typeof window !== 'undefined'
+  && (window as any).electron
+  && typeof (window as any).electron.generateTheme === 'function'
+);
+
 export const generateThemeFromLyrics = async (
   lyricsText: string,
   options?: { isPureMusic?: boolean; songTitle?: string }
 ): Promise<DualTheme> => {
   try {
+    // 桌面端不走云缓存：主题由主进程生成，那台机器有自己的 Key，
+    // 而且主进程那条路本来就会把结果落到本机缓存。硬要走一趟云端，
+    // 等于给每次生成多加一次网络往返 —— 桌面端一个字节都不该发出去。
+    if (hasDesktopThemeBridge()) {
+      return generateThemeUncached(lyricsText, options);
+    }
+
     // 云缓存：先问「这份歌词有没有人生成过」。
     //
     // 命中就直接用别人的答案 —— 这对**没填 Key 的人**是关键：他本来一个主题都生成不出来，
     // 能命中别人的结果就是白赚。缓存永不阻塞功能，所以下面所有失败都只是「没命中」。
     //
-    // 纯音乐喂给模型的是歌名而不是歌词正文，指纹与上传的 lyricHash 都跟着走同一个口径，
-    // 否则纯音乐会与它的歌词版本互相当成两首歌。
-    const cacheSource = options?.isPureMusic
-      ? `pure:${options?.songTitle ?? ''}`
-      : lyricsText;
+    // ⚠️ 指纹的输入必须与**服务端**算键的口径一致，否则永远命中不了：
+    //   1. 调用方（useThemeController）传进来的 `lyricsText` 已经是
+    //      `lines.map(fullText).join('\n').trim()`，且纯音乐时已换成歌名 —— 不要再加工一遍，
+    //      这里原样拿去哈希就好；
+    //   2. policy 用空串：folia-major 没有「屏蔽样式 / 偏好提示」这套设置，服务端那半边
+    //      对老条目也是按纯歌词算的，两边才对得上（见 aiCloudCache.ts）。
     // `stage` 是线上那台服务实际存放主题的 kind（详见 aiCloudCache.ts 的说明）。
-    const fingerprint = fingerprintLyricSource('stage', cacheSource);
+    const fingerprint = fingerprintLyricSource('stage', lyricsText);
     const { value: cached, source } = await withAiCloudCache<DualTheme>({
       kind: 'stage',
       fingerprint,
@@ -100,7 +115,7 @@ export const generateThemeFromLyrics = async (
         }
       },
       songTitle: options?.songTitle,
-      lyricHash: fingerprintLyricText(cacheSource),
+      lyricHash: fingerprintLyricText(lyricsText),
       isPureMusic: options?.isPureMusic,
     });
     if (source === 'cloud') {

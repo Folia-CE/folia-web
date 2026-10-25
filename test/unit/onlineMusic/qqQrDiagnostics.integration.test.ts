@@ -142,6 +142,12 @@ describe('QQ QR copied report integration', () => {
         const { session, manual } = await createSession();
         await session.start('qq', 'qq').settled;
 
+        // 两次轮询，所以时间要**累计**推到两次都发生为止：
+        //   第 1 次（还挂着「未扫码」）走退避序列，最多 2000ms ± 抖动；
+        //   读到 802 之后转「已扫码」，第 2 次的间隔是 3000ms ± 抖动。
+        // 只推 4000ms 会卡在第一次和第二次之间 —— 那是测试推得太短，不是登录没轮询。
+        // 分两次推，每次都给足单次上限（抖动后最大 3450ms），不依赖 Math.random 的实际取值。
+        await manual.advance(4000);
         await manual.advance(4000);
 
         expect(session.getSnapshot()).toMatchObject({ phase: 'error', failureKind: 'check-error', failure: { facts: { retryAfterMs: 30000 } } });
@@ -159,7 +165,9 @@ describe('QQ QR copied report integration', () => {
         const { session, manual } = await createSession();
         await session.start('qq', 'qq').settled;
 
-        await manual.advance(2000);
+        // 第 1 次轮询的间隔是退避序列的第一档 2000ms 加 ±15% 抖动，最多 2300ms。
+        // 推 2000ms 会在抖动偏高时刚好差一点点，那是测试推得太短，不是登录没轮询。
+        await manual.advance(2500);
 
         expect(session.getSnapshot()).toMatchObject({ phase: 'error', failureKind: 'account-refresh-failed', failure: { case: { id: 'account-not-read' } } });
         const report = await session.buildDiagnosticReport();

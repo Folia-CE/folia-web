@@ -44,6 +44,10 @@ describe('Omni architecture boundaries', () => {
 
     // One platform's rule stays with the platform. Every line outside a platform's own folders
     // that names it is counted; the list says how many each file may hold and why they stay.
+    //
+    // It reads every source file in the tree, so it is given its own timeout rather than the
+    // suite default: on a busy machine (or with the vendored webBridge code in place) the scan
+    // alone takes longer than 5s and the test would fail for being slow, not for being wrong.
     it('lets no file outside a platform folder name a platform more often than the list says', () => {
         const { places } = countPlatformNames();
         const differences: string[] = [];
@@ -56,5 +60,5 @@ describe('Omni architecture boundaries', () => {
             }
         }
         expect(differences).toEqual([]);
-    });
+    }, 60_000);
 });

@@ -231,7 +231,12 @@ describe('QQ login channels declared by the backend', () => {
         const locales = await Promise.all(['en', 'in', 'zh-CN'].map(name => import(`@/i18n/locales/${name}.ts`)));
 
         for (const method of methods) {
-            expect(existsSync(resolve(process.cwd(), 'src/assets/providers', `${method.iconKey}.svg`))).toBe(true);
+            // The icon may be any of the three formats components/login/loginMethodIcons.ts
+            // reads (svg, png, webp) — it takes the first that exists, in that order.
+            const found = ['.svg', '.png', '.webp'].some(suffix => (
+                existsSync(resolve(process.cwd(), 'src/assets/providers', `${method.iconKey}${suffix}`))
+            ));
+            expect(found, `no icon file for the login method "${method.id}" (iconKey "${method.iconKey}")`).toBe(true);
             const [group, key] = method.labelKey.split('.');
             for (const locale of locales) {
                 const table = locale.default ?? Object.values(locale)[0];

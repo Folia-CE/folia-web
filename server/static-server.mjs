@@ -320,6 +320,30 @@ const HOP_BY_HOP = new Set([
   'sec-ch-ua-platform',
 ]);
 
+/**
+ * ⚠️ 不许经过这个服务的字节：音频 / 视频 / 大文件。
+ *
+ * 这个服务只做「元数据」转发 —— 搜索结果、歌单、歌词、二维码、播放地址的 JSON。
+ * 歌曲本身必须由浏览器从各家 CDN 直接拉（网易云的 `m*.music.126.net`、QQ 的
+ * `*.qqmusic.qq.com`、酷狗的 `*.kugou.com`）。
+ *
+ * 原因很实际：**服务器扛不住**。一首歌几十兆，几个人同时在线就能把带宽与内存吃满，
+ * 而这个进程是单机、单线程的。所以这里做了两层拦：
+ *   1. 路径层面：`/song/url`、`/getMusicPlay` 这类只回 JSON，本来就只走元数据；
+ *   2. 响应层面：下游说自己是 `audio/*` 或 `video/*` 就直接掐断并报错，
+ *      防止哪天有人误把 CDN 地址拼到 `/api/...` 上。
+ *
+ * 换句话说：**播放地址是服务端去要的，歌是浏览器自己去下的**。这个服务永远不搬运音频。
+ */
+const FORBIDDEN_RESPONSE_PREFIXES = ['audio/', 'video/', 'application/octet-stream'];
+
+function isForbiddenPayload(contentType) {
+  if (!contentType) return false;
+  const type = String(contentType).toLowerCase();
+  return FORBIDDEN_RESPONSE_PREFIXES.some((prefix) => type.startsWith(prefix));
+}
+
+
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -476,8 +500,21 @@ async function handleProxy(req, res, url) {
   clearTimeout(timer);
 
   applyCors(res);
-  // 把上游的业务响应头尽可能照搬过来（Content-Type 尤其重要：图片和音频要靠它）。
+  // 把上游的业务响应头尽可能照搬过来（Content-Type 尤其重要：封面要靠它）。
   const contentType = upstream.headers.get('content-type');
+
+  // 音频 / 视频一律不搬：这个服务只转元数据，歌由浏览器直接向 CDN 取。
+  // 走到这里说明有人把 CDN 地址拼进了 `/api/...`，那是配置错误，早报早发现。
+  if (isForbiddenPayload(contentType)) {
+    if (upstream.body) upstream.body.cancel().catch(() => {});
+    sendJson(res, 415, {
+      error: 'media bytes are not proxied',
+      detail: '音频与视频必须由浏览器直接从各家 CDN 拉取，不能经过这个服务（带宽扛不住）。',
+      contentType,
+    });
+    return;
+  }
+
   if (contentType) res.setHeader('Content-Type', contentType);
   const cacheControl = upstream.headers.get('cache-control');
   if (cacheControl) res.setHeader('Cache-Control', cacheControl);

@@ -2,6 +2,7 @@ import md5 from 'blueimp-md5';
 import { OnlineProviderError } from '../../../types/onlineMusic';
 import { readProviderSessionValue, removeProviderSessionValue, writeProviderSessionValue } from '../providerStorage';
 import { lyricProxyWebUrl, requestLyricProxyOnDesktop } from '../../lyricProxy';
+import { isWebBridgeAvailable, isWebBridgeAvailableSync, requestWebBridge } from '../../webBridge';
 import { withLoginRequestLimit } from '../login/loginRequestLimit';
 
 // src/services/onlineMusic/kugou/kugouTransport.ts
@@ -431,7 +432,7 @@ const persistElectronAccountHint = (operation: KugouOperation, response: any): v
 
 export const getKugouTransportAvailability = () => {
     if (typeof window !== 'undefined' && window.electron?.kugouRequest) return { configured: true } as const;
-    return getWebApiBase()
+    return getWebApiBase() || isWebBridgeAvailableSync()
         ? { configured: true } as const
         : { configured: false, reason: 'not-configured' as const };
 };
@@ -461,6 +462,35 @@ export const requestKugou = async <T = unknown>(operation: KugouOperation, param
     }
 
     const base = getWebApiBase();
+
+    // 「本地登录」：网页版跑在 server/static-server.mjs 发出来的同源站点上时，酷狗的接口
+    // 交给那个服务端内置的接口代码（src/webBridge/api/kugou.js），不需要自建 KuGouMusicApi。
+    // 桌面端走上面的 IPC，静态托管在别处时探测失败，退回下面「需要配置后端」的老路。
+    if (!base && await isWebBridgeAvailable()) {
+        try {
+            const bridged = await requestWebBridge<any>({
+                provider: 'kugou',
+                operation,
+                method: 'GET',
+                params,
+            });
+            if (bridged?.__foliaBridgeError) {
+                if (bridged.__foliaBridgeError === 'AUTH_REQUIRED') {
+                    throw new OnlineProviderError('auth-required', bridged.message || 'KuGou login required', 'kugou', bridged);
+                }
+                if (bridged.__foliaBridgeError === 'UNSUPPORTED') {
+                    throw new OnlineProviderError('unsupported', bridged.message || `KuGouMusicApi has no ${operation} route`, 'kugou', bridged);
+                }
+                throw new OnlineProviderError('network', bridged.message || bridged.__foliaBridgeError, 'kugou', bridged);
+            }
+            persistWebSession(bridged);
+            return bridged as T;
+        } catch (error) {
+            if (error instanceof OnlineProviderError) throw error;
+            throw toKugouProviderError(operation, error);
+        }
+    }
+
     if (!base) {
         throw new OnlineProviderError('unavailable', KUGOU_API_BASE_MISSING, 'kugou');
     }

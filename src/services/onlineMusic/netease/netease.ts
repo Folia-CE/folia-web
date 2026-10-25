@@ -4,6 +4,7 @@ import { OnlineProviderError } from '../../../types/onlineMusic';
 import type { PersonalFmRequestOptions, ProviderSongAvailability } from '../../../types/onlineMusic';
 import { withLoginRequestLimit } from '../login/loginRequestLimit';
 import { withOnlineRequestLimit } from '../failure/onlineRequestLimit';
+import { isWebBridgeAvailable, requestWebBridge } from '../../webBridge';
 import { errorFields } from '../../../utils/errorText';
 
 type UnavailableSongReplacement = {
@@ -178,11 +179,69 @@ const eitherSignal = (caller: AbortSignal | null | undefined, limit: AbortSignal
   return controller.signal;
 };
 
+/**
+ * 读本机存着的游客会话，没有就注册一个。
+ *
+ * 上面那条走后端的路是在 `fetchWithCreds` 里面注册的（它手里已经有后端地址了）；
+ * 本地登录那条路不经后端，所以同样的事在这里单独做一次 —— 两组代码要的是同一份
+ * `anonymous_cookie`，谁先跑都不会互相冲突。
+ *
+ * 拿不到就返回空串，与后端那条路一致：请求照发，游客能读的接口照样读得到。
+ */
+const readOrRegisterAnonymousCookie = async (): Promise<string> => {
+  const stored = readProviderSessionValue('netease', 'anonymous_cookie', ['netease_anonymous_cookie']);
+  if (stored) return stored;
+  try {
+    const registered = await requestWebBridge<{ cookie?: string }>({
+      provider: 'netease',
+      operation: '/register/anonimous',
+      path: '/register/anonimous',
+      method: 'GET',
+    });
+    const cookie = typeof registered?.cookie === 'string' ? registered.cookie : '';
+    if (cookie) writeProviderSessionValue('netease', 'anonymous_cookie', cookie);
+    return cookie;
+  } catch {
+    return '';
+  }
+};
+
 // `limit`: the time limit the request gets, which starts when the request is sent: the wait for the
 // local backend's port above is not counted. 'sign-in': one of the requests a sign-in waits for, with
 // the sign-in's limit; an HTTP error answer to it throws NeteaseLoginHttpError instead of being read as
 // an answer. 'online': a song's address or a collection's tracks, with the limit of online requests.
 const fetchWithCreds = async (endpoint: string, options: RequestInit = {}, limit?: 'sign-in' | 'online') => {
+  // 「本地登录」：网页版跑在 server/static-server.mjs 发出来的同源站点上时，网易云的接口
+  // 请求交给那个服务端内置的接口代码（src/webBridge/api/netease.js）去发。
+  // 这样不需要自建 NeteaseCloudMusicApi 后端，也不会有 CORS 问题。
+  // 桌面端有内嵌后端，不走这里；静态托管在别处（没有那个服务）时探测失败，退回老路。
+  if (!isElectronRuntime() && await isWebBridgeAvailable()) {
+    const target = new URL(endpoint, 'https://folia.local');
+    const query = Object.fromEntries(target.searchParams.entries());
+    // 会话要自己带过去：桥那边没有登录态时只有游客会话能用，不带 cookie 的 weapi 一律 301。
+    const loginCookie = readProviderSessionValue('netease', 'cookie', ['netease_cookie']);
+    const sessionCookie = loginCookie || await readOrRegisterAnonymousCookie();
+    if (sessionCookie) query.cookie = sessionCookie;
+    const bridged = await requestWebBridge<Record<string, any>>({
+      provider: 'netease',
+      operation: target.pathname,
+      path: target.pathname,
+      method: options.method || 'GET',
+      query,
+      body: options.body,
+      headers: Object.fromEntries(new Headers(options.headers || {}).entries()),
+    });
+    if (bridged?.__foliaBridgeError) {
+      throw new Error(bridged.message || bridged.__foliaBridgeError);
+    }
+    // 用了游客会话还被判没登录 = 那份游客会话过期了：丢掉，下一次请求重新注册。
+    // （登录态失效是另一回事，不在这里动。）
+    if (!loginCookie && sessionCookie && (bridged?.code === 301 || bridged?.code === 401 || bridged?.code === 403)) {
+      removeProviderSessionValue('netease', 'anonymous_cookie', ['netease_anonymous_cookie']);
+    }
+    return bridged;
+  }
+
   const base = await getApiBase();
   const url = `${base}${endpoint}`;
   // Ensure we send credentials to persist session (cookies)

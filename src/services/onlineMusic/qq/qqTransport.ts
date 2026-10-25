@@ -3,6 +3,7 @@ import { readProviderSessionValue, removeProviderSessionValue, writeProviderSess
 import { withLoginRequestLimit } from '../login/loginRequestLimit';
 import { withOnlineRequestLimit } from '../failure/onlineRequestLimit';
 import { lyricProxyWebUrl } from '../../lyricProxy';
+import { isWebBridgeAvailable, isWebBridgeAvailableSync, requestWebBridge } from '../../webBridge';
 import { errorMessage } from '../../../utils/errorText';
 
 // src/services/onlineMusic/qq/qqTransport.ts
@@ -333,7 +334,7 @@ export const getQqRemoteApiBase = (): string | null => (getElectronQqPortReader(
 
 export const getQqTransportAvailability = () => {
     if (getElectronQqPortReader()) return { configured: true } as const;
-    return getWebApiBase()
+    return getWebApiBase() || isWebBridgeAvailableSync()
         ? { configured: true } as const
         : { configured: false, reason: 'not-configured' as const };
 };
@@ -410,11 +411,42 @@ export const requestQq = async <T = unknown>(
         );
     }
     const stored = getWebSessionCookie();
-    const base = await resolveApiBase();
     // The session parked for this run is not sent (isQqSessionParked). The status is read once the backend has a port.
     const cookie = stored && await isQqSessionStoreUnreadable() ? '' : stored;
 
     const endpoint = endpointFor(operation, params);
+
+    // 「本地登录」：网页版跑在 server/static-server.mjs 发出来的同源站点上时，QQ 的接口
+    // 交给那个服务端内置的接口代码（src/webBridge/api/qq.js），不需要自建 qq-music-api。
+    // 桌面端有内嵌后端，不走这里；静态托管在别处时探测失败，退回下面「需要配置后端」的老路。
+    if (!getElectronQqPortReader() && !getWebApiBase() && await isWebBridgeAvailable()) {
+        try {
+            const bridged = await requestWebBridge<any>({
+                provider: 'qq',
+                operation,
+                method: isPost ? 'POST' : 'GET',
+                path: endpoint.path,
+                params: endpoint.query,
+                ...(payload === undefined ? {} : { body: payload }),
+            });
+            if (bridged?.__foliaBridgeError) {
+                if (bridged.__foliaBridgeError === 'AUTH_REQUIRED') {
+                    throw new OnlineProviderError('auth-required', bridged.message || 'QQMusicApi login required', 'qq', bridged);
+                }
+                if (bridged.__foliaBridgeError === 'UNSUPPORTED') {
+                    throw new OnlineProviderError('unsupported', bridged.message || `QQMusicApi has no ${operation} route`, 'qq', bridged);
+                }
+                throw new OnlineProviderError('network', bridged.message || bridged.__foliaBridgeError, 'qq', bridged);
+            }
+            return bridged as T;
+        } catch (error) {
+            if (error instanceof OnlineProviderError) throw error;
+            throw new OnlineProviderError('network', error instanceof Error ? error.message : String(error), 'qq', error);
+        }
+    }
+
+    const base = await resolveApiBase();
+
     const query = new URLSearchParams();
     Object.entries(endpoint.query).forEach(([key, value]) => {
         if (value !== undefined) query.set(key, String(value));

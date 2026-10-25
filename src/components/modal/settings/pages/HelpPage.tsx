@@ -165,6 +165,8 @@ const HelpPage: React.FC<HelpPageProps> = ({ onOpenReleaseNotes, onOpenAiHelp, o
                         <CopyButton text={VERSION_INFO} />
                     </span>
                 </Row>
+                {/* 版本下面固定说一句「免费」：这一行是用户来找「我装的是什么」时一定会看到的地方。 */}
+                <Row sub notice={t('help.freeNotice')} />
                 {BUILD_KIND !== 'official' && (
                     <Row sub notice={t(BUILD_KIND === 'unofficial' ? 'options.unofficialBuildNotice' : 'options.selfHostedBuildNotice')} />
                 )}

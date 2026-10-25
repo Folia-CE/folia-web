@@ -1704,7 +1704,8 @@ export default {
     "majorUpdateLabel": "{{codename}} Update · 重大更新",
     "ponder": "思索帮助页",
     "ponderDescription": "了解 Folia 的基本操作与运行逻辑",
-    "version": "版本"
+    "version": "版本",
+    "freeNotice": "Folia 是免费软件：所有功能对所有人开放，没有付费会员、激活码或「解锁版」。"
   },
   "qishui": { "recentPlayed": "汽水最近播放", "recommended": "为你推荐" },
   "lyricProvider": {

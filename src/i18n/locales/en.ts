@@ -1704,7 +1704,8 @@ export default {
     "majorUpdateLabel": "{{codename}} Update · Major update",
     "ponder": "Ponder Help",
     "ponderDescription": "Learn Folia's basic controls and operating model",
-    "version": "Version"
+    "version": "Version",
+    "freeNotice": "Folia is free software: every feature is open to everyone, with no paid tier, activation code or \"unlocked edition\"."
   },
   "qishui": { "recentPlayed": "Recently played on Qishui", "recommended": "Recommended for you" },
   "lyricProvider": {

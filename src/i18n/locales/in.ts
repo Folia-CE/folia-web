@@ -1704,7 +1704,8 @@ export default {
     "majorUpdateLabel": "{{codename}} Update · Pembaruan besar",
     "ponder": "Ponder Bantuan",
     "ponderDescription": "Pelajari kontrol dasar dan cara kerja Folia",
-    "version": "Versi"
+    "version": "Versi",
+    "freeNotice": "Folia adalah perangkat lunak gratis: semua fitur terbuka untuk siapa saja, tanpa keanggotaan berbayar, kode aktivasi, atau \"edisi terbuka\"."
   },
   "qishui": { "recentPlayed": "Terakhir diputar di Qishui", "recommended": "Rekomendasi untuk Anda" },
   "lyricProvider": {

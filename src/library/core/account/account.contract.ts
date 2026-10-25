@@ -383,7 +383,25 @@ export type LibraryProviderSwitchCleanupPort = {
 /** 计时器句柄：由时钟端口自己解释（浏览器是数字，测试里可以是任何东西）。 */
 export type LibraryTimerHandle = unknown;
 
+/**
+ * 页面可见性端口：后台标签页里不该继续自动轮询登录状态。
+ * 只回答「现在是不是隐藏」并允许订阅变化；不碰 document，便于测试注入假实现。
+ */
+export type LibraryAccountVisibility = {
+    isHidden(): boolean;
+    subscribe(listener: () => void): () => void;
+};
+
 /** 时钟端口：轮询间隔、有效期、已扫码的时限与诊断时间线都经它，测试注入假时钟。 */
+/**
+ * 页面退出端口（pagehide / beforeunload）。
+ * **只用于加速释放**（例如让出租约），**不得用于保证正确性**——崩溃/强杀时不会触发；
+ * 正确性一律由超时兜底（租约到期）。
+ */
+export type LibraryAccountPageHide = {
+    subscribe(listener: () => void): () => void;
+};
+
 export type LibraryAccountClock = {
     now(): number;
     setTimeout(callback: () => void, ms: number): LibraryTimerHandle;
@@ -415,6 +433,13 @@ export type LibraryAccountControllerDeps = {
     switchCleanup: LibraryProviderSwitchCleanupPort;
     clock: LibraryAccountClock;
     diagnostics: LibraryLoginDiagnosticsEnvironment;
+    /**
+     * 页面可见性（可选）。生产由 providerAccountDeps 装配真实实现；省略时登录会话当作一直可见，
+     * 后台暂停轮询这类行为就不会发生——所以**装配层必须传**，否则相关逻辑在生产是死代码。
+     */
+    visibility?: LibraryAccountVisibility;
+    /** 页面退出端口：只用于加速释放（租约让位），正确性由超时兜底。 */
+    pageHide?: LibraryAccountPageHide;
     log?: LibraryAccountLogger;
 };
 

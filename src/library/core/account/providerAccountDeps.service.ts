@@ -7,7 +7,9 @@ import type {
     LibraryAccountClock,
     LibraryAccountControllerDeps,
     LibraryAccountLogger,
+    LibraryAccountPageHide,
     LibraryAccountStorePort,
+    LibraryAccountVisibility,
     LibraryLoginDiagnosticsEnvironment,
     LibraryProviderAccountPort,
     LibraryProviderSwitchCleanupPort,
@@ -98,6 +100,44 @@ export type ProviderAccountHostPorts = {
     log?: LibraryAccountLogger;
 };
 
+/**
+ * 页面可见性：读 document.visibilityState 并订阅 visibilitychange。
+ * 登录会话用它决定「后台暂停轮询 / 回前台按剩余时间续上」。
+ * 没有 document 的环境（测试、SSR）退化为「一直可见」，不抛错。
+ */
+export const browserLoginVisibility: LibraryAccountVisibility = {
+    isHidden: () => {
+        try {
+            return typeof document !== 'undefined' && document.visibilityState === 'hidden';
+        } catch {
+            return false;
+        }
+    },
+    subscribe: listener => {
+        if (typeof document === 'undefined') return () => { };
+        const onChange = () => listener();
+        document.addEventListener('visibilitychange', onChange);
+        return () => document.removeEventListener('visibilitychange', onChange);
+    },
+};
+
+/**
+ * 页面退出端口：正常刷新/关标签时让出租约。`pagehide` 是首选，`beforeunload` 作兼容补充。
+ * **只用于加速**：崩溃/强杀不触发，租约到期才是正确性兜底。
+ */
+export const browserLoginPageHide: LibraryAccountPageHide = {
+    subscribe: listener => {
+        if (typeof window === 'undefined') return () => { };
+        const onLeave = () => listener();
+        window.addEventListener('pagehide', onLeave);
+        window.addEventListener('beforeunload', onLeave);
+        return () => {
+            window.removeEventListener('pagehide', onLeave);
+            window.removeEventListener('beforeunload', onLeave);
+        };
+    },
+};
+
 /** 组装 controller 的全部依赖：宿主端口 + 上面的默认端口。 */
 export const createProviderAccountDeps = (host: ProviderAccountHostPorts): LibraryAccountControllerDeps => ({
     auth: omniAccountAuthPort,
@@ -109,6 +149,8 @@ export const createProviderAccountDeps = (host: ProviderAccountHostPorts): Libra
     },
     switchCleanup: host.switchCleanup,
     clock: windowAccountClock,
+    visibility: browserLoginVisibility,
+    pageHide: browserLoginPageHide,
     diagnostics: resolveLoginDiagnosticsEnvironment(),
     log: host.log,
 });

@@ -11,6 +11,14 @@ import { diagnosticLine } from '@/services/onlineMusic/login/loginDiagnosticRepo
 import { noteLoginFailure } from '@/services/onlineMusic/login/loginFailureCase';
 import { LoginRequestTimeout } from '@/services/onlineMusic/login/loginRequestLimit';
 import { OnlineProviderError, type LoginSelfCheckResult, type LoginState } from '@/types/onlineMusic';
+import {
+    LOGIN_QR_CACHE_FIELDS,
+    clearCachedLoginQr,
+    loginQrCacheKey,
+    readCachedLoginQr,
+    writeCachedLoginQr,
+    type LoginQrCacheStorage,
+} from '@/library/core/account/loginQrCache';
 
 // test/unit/library/core/providerLoginSession.test.ts
 // 登录会话：一次登录（扫码或在浏览器里确认）从开始到结束的每一步。原来登录窗口的 hook（useProviderLogin）的
@@ -36,6 +44,14 @@ const createManualClock = (start = 1_700_000_000_000) => {
         },
         clearTimeout: handle => { timers.delete(handle as number); },
     };
+    /**
+     * 下一个计时器还有多久到点。测试据此推进，避免把实现里的间隔常量抄进测试
+     * —— 抄一遍等于实现改错时测试跟着错。
+     */
+    const nextTimerDelay = (): number => {
+        const due = [...timers.values()].map(timer => timer.at - now).sort((a, b) => a - b);
+        return due.length > 0 ? due[0] : 0;
+    };
     const advance = async (ms: number) => {
         const target = now + ms;
         for (; ;) {
@@ -51,7 +67,7 @@ const createManualClock = (start = 1_700_000_000_000) => {
         now = target;
         await flush();
     };
-    return { clock, advance, flush, pendingTimers: () => timers.size };
+    return { clock, advance, flush, nextTimerDelay, pendingTimers: () => timers.size };
 };
 
 const deferred = <T,>() => {
@@ -63,15 +79,114 @@ const deferred = <T,>() => {
 
 let auth: { [K in keyof LibraryAccountAuthPort]: ReturnType<typeof vi.fn> };
 let manual: ReturnType<typeof createManualClock>;
+
+/**
+ * 推进到下一次轮询实际排上的时刻（可推进 times 次）。
+ * 轮询间隔自本批次起是退避序列（2.0/2.5/3.2/4.1/5.3s，±15%），不再是固定的 2000ms；
+ * 旧期望基于固定 2000ms，故推进方式改为「按被测代码真实排期推进」，断言本身不变。
+ */
+const advanceToNextPoll = async (times = 1): Promise<void> => {
+    for (let i = 0; i < times; i += 1) {
+        // 推进到「下一次 checkLogin 真的发生」为止，而不是「下一个计时器到期」：
+        // 假时钟里同时躺着二维码 TTL 计时器（netease 173s），按全局最小到期跳过去会直接跳过轮询、把码判过期。
+        // 也不用实现里的退避常量反推间隔——走多远由被测代码自己的排期决定，实现改错时测试不会跟着错。
+        const target = auth.checkLogin.mock.calls.length + 1;
+        let elapsed = 0;
+        while (auth.checkLogin.mock.calls.length < target && elapsed < 10_000) {
+            // 先排空微任务：deferred resolve 之后要等 handlePollResult 的 async 链跑完才会重排计时器，
+            // 单次 flush 通常不够，所以这里「flush → 小步推进」循环到轮询真的发生。
+            await manual.flush();
+            const due = manual.nextTimerDelay();
+            const step = Math.min(due > 0 ? due : 100, 1_000); // 单步不超过 1s，避免一步跨到 TTL 上
+            await manual.advance(step);
+            elapsed += step;
+        }
+    }
+};
 let log: ReturnType<typeof vi.fn<LibraryAccountLogger>>;
 let onConfirmed: ReturnType<typeof vi.fn<ProviderLoginConfirmedHandler>>;
 
-const createSession = (overrides: { onConfirmed?: ProviderLoginConfirmedHandler | null } = {}): ProviderLoginSession => (
+/** 假的 sessionStorage：只给缓存模块用的三个方法，测试可以拿到 raw 断言落盘内容。 */
+const createFakeQrCache = () => {
+    const data = new Map<string, string>();
+    const storage: LoginQrCacheStorage = {
+        getItem: key => data.get(key) ?? null,
+        setItem: (key, value) => { data.set(key, value); },
+        removeItem: key => { data.delete(key); },
+    };
+    return { storage, raw: data };
+};
+let qrCache: ReturnType<typeof createFakeQrCache> | undefined;
+
+/** 可控的假 pagehide 端口：手动触发"页面即将隐藏/卸载"，并统计订阅者数量。 */
+const createFakePageHide = () => {
+    const listeners = new Set<() => void>();
+    return {
+        port: {
+            subscribe: (listener: () => void) => {
+                listeners.add(listener);
+                return () => { listeners.delete(listener); };
+            },
+        },
+        fire() { for (const listener of [...listeners]) listener(); },
+        listenerCount: () => listeners.size,
+    };
+};
+
+/** 可枚举的租约存储：生产用 localStorage，测试用 Map 包一个。 */
+const createLeaseStorage = () => {
+    const data = new Map<string, string>();
+    return {
+        storage: {
+            getItem: (key: string) => data.get(key) ?? null,
+            setItem: (key: string, value: string) => { data.set(key, value); },
+            removeItem: (key: string) => { data.delete(key); },
+            get length() { return data.size; },
+            key: (index: number) => [...data.keys()][index] ?? null,
+        },
+        raw: data,
+    };
+};
+
+/** 可控的假可见性端口：测试里手动切前台/后台，并统计订阅者数量。 */
+const createFakeVisibility = () => {
+    let hidden = false;
+    const listeners = new Set<() => void>();
+    return {
+        port: {
+            isHidden: () => hidden,
+            subscribe: (listener: () => void) => {
+                listeners.add(listener);
+                return () => { listeners.delete(listener); };
+            },
+        },
+        set(next: boolean) { hidden = next; for (const listener of [...listeners]) listener(); },
+        listenerCount: () => listeners.size,
+    };
+};
+
+const createSession = (overrides: {
+    onConfirmed?: ProviderLoginConfirmedHandler | null;
+    qrCache?: LoginQrCacheStorage | null;
+    visibility?: { isHidden: () => boolean; subscribe: (listener: () => void) => () => void };
+    leaderLock?: { getItem(key: string): string | null; setItem(key: string, value: string): void; removeItem(key: string): void; readonly length?: number; key?(index: number): string | null } | null;
+    instanceId?: string;
+    pageHide?: { subscribe: (listener: () => void) => () => void };
+} = {}): ProviderLoginSession => (
     createProviderLoginSession({
         auth: auth as unknown as LibraryAccountAuthPort,
         clock: manual.clock,
         diagnostics: { appVersion: '9.9.9-test', userAgent: 'vitest agent', build: 'official (chthollyphile/folia-major@test)' },
         log,
+        // 抖动固定为中位（因子 1），让推进量可预测；随机源由产品代码注入，测试不依赖 Math.random。
+        random: () => 0.5,
+        // 默认关闭复用：既有用例断言的是「会话结束时会被取消」，注入缓存会改变那条路径。
+        // 只有显式要测复用的用例才传 qrCache（见文件末尾的 QR reuse describe）。
+        qrCache: overrides.qrCache === undefined ? null : overrides.qrCache,
+        visibility: overrides.visibility,
+        ...(overrides.leaderLock === undefined ? {} : { leaderLock: overrides.leaderLock }),
+        ...(overrides.instanceId === undefined ? {} : { instanceId: overrides.instanceId }),
+        ...(overrides.pageHide === undefined ? {} : { pageHide: overrides.pageHide }),
         onConfirmed: overrides.onConfirmed === null ? undefined : overrides.onConfirmed ?? onConfirmed,
     })
 );
@@ -86,6 +201,7 @@ beforeEach(() => {
     manual = createManualClock();
     log = vi.fn<LibraryAccountLogger>();
     onConfirmed = vi.fn<ProviderLoginConfirmedHandler>();
+    qrCache = createFakeQrCache();
     auth = {
         resolveLoginMethods: vi.fn().mockResolvedValue([]),
         getProviderCapabilities: vi.fn().mockReturnValue({ auth: true }),
@@ -178,7 +294,7 @@ describe('providerLoginSession', () => {
         auth.checkLogin.mockResolvedValueOnce({ state: 'error', message: 'refused' } satisfies LoginState);
         const session = createSession();
         await session.start('qq').settled;
-        await manual.advance(POLL);
+        await advanceToNextPoll(); // 原为 advance(POLL)：旧期望基于固定 2000ms
         expect(session.getSnapshot().phase).toBe('error');
         expect(manual.pendingTimers()).toBe(0);
     });
@@ -187,7 +303,7 @@ describe('providerLoginSession', () => {
         auth.checkLogin.mockResolvedValueOnce({ state: 'confirmed' } satisfies LoginState);
         const session = createSession();
         await session.start('netease').settled;
-        await manual.advance(POLL);
+        await advanceToNextPoll(); // 原为 advance(POLL)：旧期望基于固定 2000ms
         session.stop();
         expect(auth.cancelLogin).not.toHaveBeenCalled();
         expect(onConfirmed).toHaveBeenCalledExactlyOnceWith({ sessionId: 1, providerId: 'netease', methodId: null });
@@ -197,7 +313,7 @@ describe('providerLoginSession', () => {
         auth.checkLogin.mockResolvedValueOnce({ state: 'expired' } satisfies LoginState);
         const session = createSession();
         await session.start('netease').settled;
-        await manual.advance(POLL);
+        await advanceToNextPoll(); // 原为 advance(POLL)：旧期望基于固定 2000ms
         expect(session.getSnapshot()).toMatchObject({ phase: 'expired', failureKind: null, failure: { case: { id: 'code-expired' } } });
     });
 
@@ -207,7 +323,7 @@ describe('providerLoginSession', () => {
             .mockResolvedValueOnce({ state: 'expired' } satisfies LoginState);
         const session = createSession();
         await session.start('netease').settled;
-        await manual.advance(POLL * 2);
+        await advanceToNextPoll(2); // 原为 advance(POLL * 2)
         expect(session.getSnapshot()).toMatchObject({ phase: 'expired', failureKind: 'expired-after-scan', failure: { case: { id: 'expired-after-scan' } } });
     });
 
@@ -216,12 +332,15 @@ describe('providerLoginSession', () => {
         auth.checkLogin.mockResolvedValue({ state: 'scanned' } satisfies LoginState);
         const session = createSession();
         await session.start('kugou').settled;
-        await manual.advance(POLL);
+        await advanceToNextPoll(); // 原为 advance(POLL)：旧期望基于固定 2000ms
         // Back to waiting at the next check: the count goes; scanned again at the one after, it starts from there.
         auth.checkLogin.mockResolvedValueOnce({ state: 'waiting' } satisfies LoginState);
         await manual.advance(PROVIDER_LOGIN_SCANNED_LIMIT_MS + POLL / 2);
         expect(session.getSnapshot().phase).toBe('scanned');
-        await manual.advance(POLL * 1.5);
+        // 原为 advance(POLL * 1.5)：旧期望基于固定 2000ms。
+        // 扫描后间隔变为 3s，多轮 poll 不会重启计时器（只在 scannedTimer 为 null 时才设），
+        // 所以过期必须真的跨过那个 60s 计时器，而不是「再 poll 一次」。
+        await manual.advance(PROVIDER_LOGIN_SCANNED_LIMIT_MS + 1_000);
         expect(session.getSnapshot()).toMatchObject({
             phase: 'expired',
             failureKind: 'expired-after-scan',
@@ -237,7 +356,7 @@ describe('providerLoginSession', () => {
         auth.checkLogin.mockResolvedValueOnce({ state: 'confirmed' } satisfies LoginState);
         const session = createSession();
         await session.start('netease').settled;
-        await manual.advance(POLL);
+        await advanceToNextPoll(); // 原为 advance(POLL)：旧期望基于固定 2000ms
         expect(session.getSnapshot()).toMatchObject({
             phase: 'error', failureKind: 'account-refresh-failed', failure: { case: { id: 'account-not-read', kind: 'F' }, facts: { step: 'account' } },
         });
@@ -280,7 +399,7 @@ describe('providerLoginSession', () => {
         await session.start('netease').settled;
         const ready = session.getSnapshot();
         const calls = listener.mock.calls.length;
-        await manual.advance(POLL * 3);
+        await advanceToNextPoll(3); // 原为 advance(POLL * 3)
         expect(session.getSnapshot()).toBe(ready);
         expect(listener).toHaveBeenCalledTimes(calls);
         unsubscribe();
@@ -292,10 +411,10 @@ describe('providerLoginSession', () => {
         auth.checkLogin.mockReturnValueOnce(check.promise);
         const session = createSession();
         await session.start('netease').settled;
-        await manual.advance(POLL * 5);
+        await advanceToNextPoll(5); // 原为 advance(POLL * 5)
         expect(auth.checkLogin).toHaveBeenCalledTimes(1);
         check.resolve({ state: 'waiting' });
-        await manual.advance(POLL);
+        await advanceToNextPoll(); // 原为 advance(POLL)：旧期望基于固定 2000ms
         expect(auth.checkLogin).toHaveBeenCalledTimes(2);
     });
 
@@ -312,7 +431,7 @@ describe('providerLoginSession', () => {
         auth.checkLogin.mockRejectedValueOnce(new Error('socket hang up'));
         const session = createSession();
         await session.start('netease').settled;
-        await manual.advance(POLL);
+        await advanceToNextPoll(); // 原为 advance(POLL)：旧期望基于固定 2000ms
         expect(session.getSnapshot()).toMatchObject({ phase: 'error', failureKind: 'check-error', failure: { facts: { step: 'check' } } });
         expect(manual.pendingTimers()).toBe(0);
     });
@@ -323,7 +442,7 @@ describe('providerLoginSession', () => {
         auth.checkLogin.mockResolvedValueOnce({ state: 'confirmed' } satisfies LoginState);
         const session = createSession();
         await session.start('netease').settled;
-        await manual.advance(POLL);
+        await advanceToNextPoll(); // 原为 advance(POLL)：旧期望基于固定 2000ms
         await session.start('qq').settled;
         refresh.resolve(false);
         await manual.flush();
@@ -348,7 +467,7 @@ describe('providerLoginSession', () => {
             .mockResolvedValueOnce({ state: 'confirmed' } satisfies LoginState);
         const session = createSession();
         await session.start('netease').settled;
-        await manual.advance(POLL * 2);
+        await advanceToNextPoll(2); // 原为 advance(POLL * 2)
         expect(log.mock.calls.map(([, event]) => event)).toEqual(['start', 'ready', 'state', 'state', 'complete']);
         expect(log.mock.calls.every(([, , detail]) => detail.providerId === 'netease' && typeof detail.elapsedMs === 'number')).toBe(true);
         const report = await session.buildDiagnosticReport();
@@ -360,7 +479,7 @@ describe('providerLoginSession', () => {
         auth.checkLogin.mockResolvedValueOnce({ state: 'confirmed' } satisfies LoginState);
         const session = createSession();
         await session.start('netease').settled;
-        await manual.advance(POLL);
+        await advanceToNextPoll(); // 原为 advance(POLL)：旧期望基于固定 2000ms
         expect(session.getSnapshot()).toMatchObject({ phase: 'error', failureKind: 'check-error', failure: { case: { id: 'account-not-read' }, facts: { step: 'account' } } });
     });
 
@@ -368,7 +487,7 @@ describe('providerLoginSession', () => {
         auth.checkLogin.mockResolvedValueOnce({ state: 'confirmed' } satisfies LoginState);
         const session = createSession({ onConfirmed: null });
         await session.start('netease').settled;
-        await manual.advance(POLL);
+        await advanceToNextPoll(); // 原为 advance(POLL)：旧期望基于固定 2000ms
         expect(session.getSnapshot()).toMatchObject({ phase: 'confirmed', failure: null });
     });
 
@@ -425,7 +544,7 @@ describe('providerLoginSession · a sign-in confirmed in the browser', () => {
             failure: { case: { id: 'browser-not-opened', kind: 'E', action: 'reopen-browser' }, facts: { step: 'open', inBrowser: true } },
         });
         // Still waiting: the checks go on.
-        await manual.advance(POLL);
+        await advanceToNextPoll(); // 原为 advance(POLL)：旧期望基于固定 2000ms
         expect(auth.checkLogin).toHaveBeenCalledTimes(1);
     });
 
@@ -449,7 +568,7 @@ describe('providerLoginSession · a sign-in confirmed in the browser', () => {
         auth.checkLogin.mockResolvedValueOnce({ state: 'error', failure: { case: 'browser-closed-early', mainCode: 'exited' } } satisfies LoginState);
         const session = createSession();
         await session.start('ytm').settled;
-        await manual.advance(POLL);
+        await advanceToNextPoll(); // 原为 advance(POLL)：旧期望基于固定 2000ms
         open.reject(new Error('late'));
         await manual.flush();
         expect(session.getSnapshot().failure).toMatchObject({ case: { id: 'browser-closed-early' } });
@@ -462,7 +581,7 @@ describe('providerLoginSession · a sign-in confirmed in the browser', () => {
         auth.checkLogin.mockResolvedValueOnce({ state: 'confirmed' } satisfies LoginState);
         const session = createSession();
         await session.start('spotify').settled;
-        await manual.advance(POLL);
+        await advanceToNextPoll(); // 原为 advance(POLL)：旧期望基于固定 2000ms
         open.reject(new Error('late'));
         await manual.flush();
         expect(session.getSnapshot()).toMatchObject({ phase: 'confirmed', failure: null });
@@ -497,7 +616,7 @@ describe('providerLoginSession · a sign-in confirmed in the browser', () => {
 
         auth.checkLogin.mockResolvedValueOnce({ state: 'expired' } satisfies LoginState);
         await session.start('spotify').settled;
-        await manual.advance(POLL);
+        await advanceToNextPoll(); // 原为 advance(POLL)：旧期望基于固定 2000ms
         session.stop();
         expect(session.getSnapshot().failure).toMatchObject({ case: { id: 'browser-unfinished' } });
     });
@@ -521,7 +640,7 @@ describe('providerLoginSession · why the sign-in did not succeed', () => {
             .mockResolvedValueOnce({ state: 'expired', failure: { retryAfterMs: 30_000 } } satisfies LoginState);
         const session = createSession();
         await session.start('qq').settled;
-        await manual.advance(POLL * 2);
+        await advanceToNextPoll(2); // 原为 advance(POLL * 2)
         expect(session.getSnapshot().failure).toMatchObject({
             case: { id: 'expired-after-scan', action: 'wait-then-retry' }, facts: { retryAfterMs: 30_000 },
         });
@@ -542,18 +661,18 @@ describe('providerLoginSession · why the sign-in did not succeed', () => {
         auth.checkLogin.mockResolvedValueOnce({ state: 'error', failure: { code: '8821', message: '当前登录存在安全风险' } } satisfies LoginState);
         const session = createSession();
         await session.start('netease').settled;
-        await manual.advance(POLL);
+        await advanceToNextPoll(); // 原为 advance(POLL)：旧期望基于固定 2000ms
         expect(session.getSnapshot().failure).toMatchObject({ case: { id: 'refused', kind: 'C' }, facts: { code: '8821', message: '当前登录存在安全风险' } });
 
         auth.checkLogin.mockResolvedValueOnce({ state: 'error', failure: { case: 'retry-later', retryAfterMs: 31_000 } } satisfies LoginState);
         await session.start('qq').settled;
-        await manual.advance(POLL);
+        await advanceToNextPoll(); // 原为 advance(POLL)：旧期望基于固定 2000ms
         expect(session.getSnapshot().failure).toMatchObject({ case: { id: 'retry-later', action: 'wait-then-retry' }, facts: { retryAfterMs: 31_000 } });
 
         auth.checkLogin.mockResolvedValueOnce({ state: 'error', failure: { case: 'device-limit', code: '20279' } } satisfies LoginState);
         auth.canRunLoginSelfCheck.mockReturnValue(true);
         await session.start('qq').settled;
-        await manual.advance(POLL);
+        await advanceToNextPoll(); // 原为 advance(POLL)：旧期望基于固定 2000ms
         expect(session.getSnapshot()).toMatchObject({ failureKind: 'check-error', failure: { case: { id: 'device-limit', kind: 'C' } } });
         // A device limit is still worth a self-check.
         expect(auth.runLoginSelfCheck).toHaveBeenCalledWith('qq');
@@ -573,7 +692,7 @@ describe('providerLoginSession · why the sign-in did not succeed', () => {
         auth.checkLogin.mockResolvedValueOnce({ state: 'expired' } satisfies LoginState);
         const session = createSession();
         await session.start('spotify').settled;
-        await manual.advance(POLL);
+        await advanceToNextPoll(); // 原为 advance(POLL)：旧期望基于固定 2000ms
         expect(session.getSnapshot().failure).toMatchObject({ case: { id: 'browser-unfinished', kind: 'A', action: 'sign-in-again' } });
     });
 
@@ -582,7 +701,7 @@ describe('providerLoginSession · why the sign-in did not succeed', () => {
         auth.checkLogin.mockResolvedValueOnce({ state: 'confirmed' } satisfies LoginState);
         const session = createSession();
         await session.start('kugou').settled;
-        await manual.advance(POLL);
+        await advanceToNextPoll(); // 原为 advance(POLL)：旧期望基于固定 2000ms
         expect(session.getSnapshot().failure).toMatchObject({ case: { id: 'account-not-read', kind: 'F' } });
     });
 
@@ -594,7 +713,7 @@ describe('providerLoginSession · why the sign-in did not succeed', () => {
 
         auth.checkLogin.mockRejectedValueOnce(new Error('???'));
         await session.start('kugou').settled;
-        await manual.advance(POLL);
+        await advanceToNextPoll(); // 原为 advance(POLL)：旧期望基于固定 2000ms
         expect(session.getSnapshot().failure).toMatchObject({ case: { id: 'unknown' }, facts: { step: 'check' } });
     });
 
@@ -603,7 +722,7 @@ describe('providerLoginSession · why the sign-in did not succeed', () => {
         auth.checkLogin.mockReturnValueOnce(check.promise);
         const session = createSession();
         await session.start('netease').settled;
-        await manual.advance(POLL);
+        await advanceToNextPoll(); // 原为 advance(POLL)：旧期望基于固定 2000ms
         session.stop();
         check.resolve({ state: 'error', failure: { code: '8821' } });
         await manual.flush();
@@ -625,7 +744,7 @@ describe('providerLoginSession · why the sign-in did not succeed', () => {
         auth.checkLogin.mockRejectedValueOnce(error);
         const session = createSession();
         await session.start('spotify').settled;
-        await manual.advance(POLL);
+        await advanceToNextPoll(); // 原为 advance(POLL)：旧期望基于固定 2000ms
         expect(session.getSnapshot().failure).toMatchObject({ case: { id: 'not-authorized' } });
         expect(manual.pendingTimers()).toBe(0);
     });
@@ -669,11 +788,58 @@ describe('providerLoginSession · serial starts, transient checks and the self-c
             .mockResolvedValueOnce({ state: 'scanned' } satisfies LoginState);
         const session = createSession();
         await session.start('netease').settled;
-        await manual.advance(POLL * 2);
+        await advanceToNextPoll(2); // 原为 advance(POLL * 2)
         expect(session.getSnapshot()).toMatchObject({ phase: 'waiting', failure: null });
-        await manual.advance(POLL);
+        await advanceToNextPoll(); // 原为 advance(POLL)：旧期望基于固定 2000ms
         expect(session.getSnapshot().phase).toBe('scanned');
         expect(log.mock.calls.filter(([, event]) => event === 'poll:retry')).toHaveLength(2);
+    });
+
+    it('[A] 429 with a 502 predecessor is the adapter own backoff: no automatic retry, hand over to the user', async () => {
+        auth.checkLogin
+            .mockResolvedValueOnce({ state: 'error', transient: true, failure: { httpStatus: 502 } } satisfies LoginState)
+            .mockResolvedValueOnce({ state: 'error', failure: { httpStatus: 429, retryAfterMs: 5_000 } } satisfies LoginState);
+        const session = createSession();
+        await session.start('netease').settled;
+        await advanceToNextPoll();
+        await advanceToNextPoll();
+        // 502 之后的那次重试，间隔由退避决定（≥2000ms），所以「502 前驱」不能按时间窗口判。
+        expect(auth.checkLogin).toHaveBeenCalledTimes(2);
+        expect(session.getSnapshot()).toMatchObject({ phase: 'error', failureKind: 'check-error' });
+        expect(manual.pendingTimers()).toBe(0);
+        const rateLimited = log.mock.calls.filter(([, event]) => event === 'poll:rate-limited');
+        expect(rateLimited).toHaveLength(1);
+        expect(rateLimited[0][2]).toMatchObject({ has502Predecessor: true, autoRetrySkipped: true });
+    });
+
+    it('[A] 429 without a 502 predecessor is upstream throttling: still retried with backoff', async () => {
+        auth.checkLogin
+            .mockResolvedValueOnce({ state: 'error', failure: { httpStatus: 429, retryAfterMs: 1_000 } } satisfies LoginState)
+            .mockResolvedValueOnce({ state: 'waiting' } satisfies LoginState);
+        const session = createSession();
+        await session.start('netease').settled;
+        await advanceToNextPoll();
+        const first = log.mock.calls.filter(([, event]) => event === 'poll:rate-limited');
+        expect(first).toHaveLength(1);
+        expect(first[0][2]).toMatchObject({ has502Predecessor: false });
+        expect(first[0][2]).not.toHaveProperty('autoRetrySkipped');
+        await advanceToNextPoll();
+        expect(auth.checkLogin).toHaveBeenCalledTimes(2);
+        expect(session.getSnapshot().phase).toBe('waiting');
+    });
+
+    it('[A] a 502 is forgotten once a normal poll happens, so a later 429 is not mistaken for the adapter backoff', async () => {
+        auth.checkLogin
+            .mockResolvedValueOnce({ state: 'error', transient: true, failure: { httpStatus: 502 } } satisfies LoginState)
+            .mockResolvedValueOnce({ state: 'waiting' } satisfies LoginState)
+            .mockResolvedValueOnce({ state: 'error', failure: { httpStatus: 429, retryAfterMs: 1_000 } } satisfies LoginState);
+        const session = createSession();
+        await session.start('netease').settled;
+        await advanceToNextPoll(2);
+        await advanceToNextPoll();
+        const rateLimited = log.mock.calls.filter(([, event]) => event === 'poll:rate-limited');
+        expect(rateLimited).toHaveLength(1);
+        expect(rateLimited[0][2]).toMatchObject({ has502Predecessor: false });
     });
 
     it('fails once the transient failures exceed the limit, and counts only consecutive ones', async () => {
@@ -686,9 +852,9 @@ describe('providerLoginSession · serial starts, transient checks and the self-c
             .mockResolvedValueOnce(transient);
         const session = createSession();
         await session.start('netease').settled;
-        await manual.advance(POLL * 4);
+        await advanceToNextPoll(4); // 原为 advance(POLL * 4)：旧期望基于固定 2000ms
         expect(session.getSnapshot().phase).toBe('waiting');
-        await manual.advance(POLL);
+        await advanceToNextPoll(); // 原为 advance(POLL)：旧期望基于固定 2000ms
         expect(session.getSnapshot()).toMatchObject({ phase: 'error', failureKind: 'check-error', failure: { case: { id: 'unreachable' } } });
     });
 
@@ -718,7 +884,7 @@ describe('providerLoginSession · serial starts, transient checks and the self-c
         auth.checkLogin.mockResolvedValueOnce({ state: 'expired' } satisfies LoginState);
         const session = createSession();
         await session.start('netease').settled;
-        await manual.advance(POLL);
+        await advanceToNextPoll(); // 原为 advance(POLL)：旧期望基于固定 2000ms
         expect(auth.runLoginSelfCheck).not.toHaveBeenCalled();
         expect(session.getSnapshot().selfCheck).toBeNull();
     });
@@ -759,3 +925,311 @@ describe('providerLoginSession · serial starts, transient checks and the self-c
         expect(session.getSnapshot().selfCheck).toEqual({ status: 'failed', message: 'IPC channel closed' });
     });
 });
+
+describe('providerLoginSession · visibility pause must not eat the poll budget (audit P1)', () => {
+    it('keeps polling after the tab stayed hidden longer than the whole budget', async () => {
+        auth.getLoginTtlMs.mockReturnValue(175_000);
+        auth.checkLogin.mockResolvedValue({ state: 'waiting' } satisfies LoginState);
+        const vis = createFakeVisibility();
+        const session = createSession({ visibility: vis.port });
+        await session.start('netease').settled;
+        await advanceToNextPoll();
+        expect(auth.checkLogin).toHaveBeenCalledTimes(1);
+
+        // 用户切走 100 秒 —— 超过 90s 总预算，但期间一个请求都没发。
+        vis.set(true);
+        await manual.advance(100_000);
+        vis.set(false);
+        await manual.flush();
+
+        // 恢复后必须继续自动轮询：后台那段墙钟不能算进预算。
+        await advanceToNextPoll();
+        expect(auth.checkLogin).toHaveBeenCalledTimes(2);
+        expect(log.mock.calls.some(([, event]) => event === 'poll:budget-exhausted')).toBe(false);
+    });
+
+    it('still stops when the active polling time itself exceeds the budget', async () => {
+        auth.getLoginTtlMs.mockReturnValue(175_000);
+        auth.checkLogin.mockResolvedValue({ state: 'waiting' } satisfies LoginState);
+        const vis = createFakeVisibility();
+        const session = createSession({ visibility: vis.port });
+        await session.start('netease').settled;
+        await advanceToNextPoll(20);
+        expect(log.mock.calls.some(([, event]) => event === 'poll:budget-exhausted')).toBe(true);
+    });
+
+    it('does not expire a scanned code while the tab is hidden (client-side inference needs polling)', async () => {
+        auth.getLoginTtlMs.mockReturnValue(175_000);
+        auth.checkLogin.mockResolvedValue({ state: 'scanned' } satisfies LoginState);
+        const vis = createFakeVisibility();
+        const session = createSession({ visibility: vis.port });
+        await session.start('netease').settled;
+        await advanceToNextPoll();
+        expect(session.getSnapshot().phase).toBe('scanned');
+
+        // 后台待 61 秒：超过「已扫码 60 秒」的客户端推断时限。
+        // 但这段时间我们一个请求都没发，根本无从知道用户有没有在手机上确认，
+        // 因此不能据此判死 —— 更不能顺手把后端会话取消掉。
+        vis.set(true);
+        await manual.advance(61_000);
+        vis.set(false);
+        await manual.flush();
+        expect(session.getSnapshot().phase).toBe('scanned');
+        expect(auth.cancelLogin).not.toHaveBeenCalled();
+    });
+
+    it('unsubscribes from visibility when the session is disposed', () => {
+        const vis = createFakeVisibility();
+        const session = createSession({ visibility: vis.port });
+        expect(vis.listenerCount()).toBe(1);
+        session.dispose();
+        expect(vis.listenerCount()).toBe(0);
+    });
+});
+
+describe('providerLoginSession · Q0: one sign-in turn must not generate extra codes (A-41 ④)', () => {
+    // Q0 的口径：**一个登录周转内**（从用户点登录到会话结束）生成的二维码数量。
+    // 每次生成 = login_qr_key + login_qr_create = 2 次上游调用，直接换成 429 风险。
+    // 目标：正常路径 = 1；已被治理的浪费路径（关窗重开、多标签）= 0 增量。
+    const codesGenerated = () => auth.startLogin.mock.calls.length;
+
+    it('generates exactly one code for a normal sign-in', async () => {
+        auth.getLoginTtlMs.mockReturnValue(175_000);
+        const session = createSession({ qrCache: qrCache!.storage });
+        await session.start('netease').settled;
+        expect(codesGenerated()).toBe(1);
+    });
+
+    it('adds no extra code when the window is closed and reopened within the lifetime', async () => {
+        auth.getLoginTtlMs.mockReturnValue(175_000);
+        const session = createSession({ qrCache: qrCache!.storage });
+        await session.start('netease').settled;
+        session.stop({ cancelSession: false });
+        await session.start('netease').settled;
+        session.stop({ cancelSession: false });
+        await session.start('netease').settled;
+        // 三次开关窗口，仍然只有第一张码：复用生效。
+        expect(codesGenerated()).toBe(1);
+        expect(log.mock.calls.filter(([, event]) => event === 'poll:qr-reused').length).toBe(2);
+    });
+
+    it('generates exactly one code even when a smaller id asks after we already took one (FCFS)', async () => {
+        // 这是 C 的取证场景：A 先到并取码，B 后到但 instanceId 更小。
+        // ID 排序下 B 会抢走 leadership 再取一次码（qrGenerations = 2）；
+        // FCFS 下 B 必须让位（qrGenerations = 1）—— 上游只被打一次。
+        auth.getLoginTtlMs.mockReturnValue(175_000);
+        const lease = createLeaseStorage();
+        const first = createSession({ leaderLock: lease.storage, instanceId: 'inst-mmm' });
+        const ticketFirst = first.start('netease');
+        await manual.advance(200);
+        await ticketFirst.settled;
+        expect(auth.startLogin).toHaveBeenCalledTimes(1);
+
+        // 后到者 ID 更小：FCFS 下不能抢走。
+        const second = createSession({ leaderLock: lease.storage, instanceId: 'inst-aaa' });
+        const ticketSecond = second.start('netease');
+        await manual.advance(400);
+        expect(auth.startLogin).toHaveBeenCalledTimes(1);
+
+        first.stop();
+        second.stop();
+        expect(ticketSecond).toBeTruthy();
+    });
+    it('adds no extra code when a second tab asks while the first holds the lease', async () => {
+        auth.getLoginTtlMs.mockReturnValue(175_000);
+        const lease = createLeaseStorage();
+        const first = createSession({ leaderLock: lease.storage, instanceId: 'inst-a' });
+        const ticketFirst = first.start('netease');
+        await manual.advance(200);
+        await ticketFirst.settled;
+        expect(codesGenerated()).toBe(1);
+
+        // 第二个标签拿不到租约：它一张码都不该生成。
+        const second = createSession({ leaderLock: lease.storage, instanceId: 'inst-b' });
+        const ticketSecond = second.start('netease');
+        await manual.advance(400);
+        expect(codesGenerated()).toBe(1);
+        first.stop();
+        second.stop();
+        expect(ticketSecond).toBeTruthy();
+    });
+
+    it('generates a fresh code only when the previous one is genuinely unusable', async () => {
+        auth.getLoginTtlMs.mockReturnValue(60_000);
+        const session = createSession({ qrCache: qrCache!.storage });
+        await session.start('netease').settled;
+        session.stop({ cancelSession: false });
+        // 过了有效期：必须重新取码（不能为了 Q0 而让用户扫一张死码）。
+        await manual.advance(60_001);
+        await session.start('netease').settled;
+        expect(codesGenerated()).toBe(2);
+    });
+});
+describe('providerLoginSession · cross-tab lease release: pagehide first, TTL as backstop', () => {
+    it('hands the lease over immediately when the page is hidden, without waiting for the TTL', async () => {
+        auth.getLoginTtlMs.mockReturnValue(175_000);
+        const lease = createLeaseStorage();
+        const pageHide = createFakePageHide();
+        const a = createSession({ leaderLock: lease.storage, instanceId: 'inst-a', pageHide: pageHide.port });
+        const ticketA = a.start('netease');
+        await manual.advance(200);
+        await ticketA.settled;
+        expect(auth.startLogin).toHaveBeenCalledTimes(1);
+
+        // 正常刷新/关标签：pagehide 触发，立刻让出租约（不依赖 TTL）。
+        pageHide.fire();
+        expect(lease.raw.size).toBe(0);
+
+        const b = createSession({ leaderLock: lease.storage, instanceId: 'inst-b', pageHide: pageHide.port });
+        const ticketB = b.start('netease');
+        await manual.advance(200); // 只够越过静默期，远小于 5s 租约
+        await ticketB.settled;
+        expect(auth.startLogin).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not hand over when pagehide never fires: the lease must expire first', async () => {
+        auth.getLoginTtlMs.mockReturnValue(175_000);
+        const lease = createLeaseStorage();
+        const pageHide = createFakePageHide(); // 模拟被强杀：回调永不触发
+        const a = createSession({ leaderLock: lease.storage, instanceId: 'inst-a', pageHide: pageHide.port });
+        const ticketA = a.start('netease');
+        await manual.advance(200);
+        await ticketA.settled;
+        expect(auth.startLogin).toHaveBeenCalledTimes(1);
+
+        const b = createSession({ leaderLock: lease.storage, instanceId: 'inst-b', pageHide: pageHide.port });
+        const ticketB = b.start('netease');
+        await manual.advance(200);
+        // A 的候选还活着（它的心跳在续租）：B 只能等，不能取码 —— 这证明释放不是自动发生的。
+        expect(auth.startLogin).toHaveBeenCalledTimes(1);
+        expect(lease.raw.size).toBeGreaterThan(0);
+        expect(ticketB).toBeTruthy();
+
+        // 收尾：停掉两个会话，避免心跳定时器留给后续用例。
+        a.stop();
+        b.stop();
+        // 说明：「租约到期后接管」由 loginLeaderLease.test.ts 的
+        // 'lets a follower take over once the leader stops renewing' 单独覆盖 ——
+        // 那一层能精确模拟「心跳停止」，这里两个 session 共享同一个假时钟，做不到。
+    });
+});
+
+describe('loginQrCache · clearing a provider wipes every method but nothing else (audit P2-2)', () => {
+    /** 生产用的 sessionStorage 支持枚举；假存储不带 length/key 时会走降级分支，那条路之前零覆盖。 */
+    const createEnumerableStorage = () => {
+        const data = new Map<string, string>();
+        const storage: LoginQrCacheStorage = {
+            getItem: key => data.get(key) ?? null,
+            setItem: (key, value) => { data.set(key, value); },
+            removeItem: key => { data.delete(key); },
+            get length() { return data.size; },
+            key: index => [...data.keys()][index] ?? null,
+        };
+        return { storage, raw: data };
+    };
+    const entry = (key: string) => ({ key, qrImage: 'img', ttlMs: 60_000, lastState: 'waiting' });
+    const now = 1_700_000_000_000;
+
+    it('removes every method of one provider and leaves other providers alone', () => {
+        const { storage, raw } = createEnumerableStorage();
+        writeCachedLoginQr(storage, 'qq', 'qq', entry('k1'), now);
+        writeCachedLoginQr(storage, 'qq', 'wechat', entry('k2'), now);
+        writeCachedLoginQr(storage, 'netease', null, entry('k3'), now);
+        expect(raw.size).toBe(3);
+
+        clearCachedLoginQr(storage, 'qq');
+
+        expect(raw.has(loginQrCacheKey('qq', 'qq'))).toBe(false);
+        expect(raw.has(loginQrCacheKey('qq', 'wechat'))).toBe(false);
+        expect(raw.has(loginQrCacheKey('netease'))).toBe(true);
+        expect(readCachedLoginQr(storage, 'netease', null, now)?.key).toBe('k3');
+    });
+
+    it('does not touch a provider whose id merely starts with the same letters', () => {
+        const { storage, raw } = createEnumerableStorage();
+        writeCachedLoginQr(storage, 'qq', 'qq', entry('k1'), now);
+        writeCachedLoginQr(storage, 'qq2', 'qq', entry('k2'), now);
+
+        clearCachedLoginQr(storage, 'qq');
+
+        expect(raw.has(loginQrCacheKey('qq', 'qq'))).toBe(false);
+        // 前缀带尾冒号，所以 'qq' 不会误伤 'qq2'。
+        expect(raw.has(loginQrCacheKey('qq2', 'qq'))).toBe(true);
+    });
+});
+
+describe('providerLoginSession · QR reuse within one tab (task-8 batch 3)', () => {
+    const entryOf = (providerId: string): Record<string, unknown> => {
+        // 键结构由产品代码定义（v2 起含 methodId），测试不硬编码命名空间。
+        const raw = qrCache!.raw.get(loginQrCacheKey(providerId));
+        expect(raw).toBeTruthy();
+        return JSON.parse(raw!) as Record<string, unknown>;
+    };
+
+    it('reuses a still-valid code after the window is closed instead of asking upstream again', async () => {
+        auth.getLoginTtlMs.mockReturnValue(60_000);
+        const session = createSession({ qrCache: qrCache!.storage });
+        await session.start('netease').settled;
+        expect(auth.startLogin).toHaveBeenCalledTimes(1);
+        session.stop({ cancelSession: false });
+        await session.start('netease').settled;
+        expect(auth.startLogin).toHaveBeenCalledTimes(1);
+        expect(log.mock.calls.some(([, event]) => event === 'poll:qr-reused')).toBe(true);
+    });
+
+    it('asks upstream again once the cached code has expired, so the cache never freezes sign-in', async () => {
+        auth.getLoginTtlMs.mockReturnValue(60_000);
+        const session = createSession({ qrCache: qrCache!.storage });
+        await session.start('netease').settled;
+        session.stop({ cancelSession: false });
+        await manual.advance(60_001);
+        await session.start('netease').settled;
+        expect(auth.startLogin).toHaveBeenCalledTimes(2);
+    });
+
+    it('stores only the whitelisted fields and never anything that looks like a credential', async () => {
+        auth.getLoginTtlMs.mockReturnValue(60_000);
+        const session = createSession({ qrCache: qrCache!.storage });
+        await session.start('netease').settled;
+        const entry = entryOf('netease');
+        expect(Object.keys(entry).sort()).toEqual([...LOGIN_QR_CACHE_FIELDS].sort());
+        expect(JSON.stringify(entry)).not.toMatch(/(cookie|token|session|authorization)/i);
+    });
+
+    it('does not use the cache for platforms that confirm in the browser and have no code', async () => {
+        inBrowser();
+        const session = createSession({ qrCache: qrCache!.storage });
+        await session.start('netease').settled;
+        expect(auth.startLogin).toHaveBeenCalledTimes(1);
+        session.stop({ cancelSession: false });
+        await session.start('netease').settled;
+        expect(auth.startLogin).toHaveBeenCalledTimes(2);
+        expect(log.mock.calls.some(([, event]) => event === 'poll:qr-reused')).toBe(false);
+    });
+
+    it('does not reuse a code that has already been scanned: upstream has consumed it', async () => {
+        auth.getLoginTtlMs.mockReturnValue(60_000);
+        auth.checkLogin.mockResolvedValue({ state: 'scanned' } satisfies LoginState);
+        const session = createSession({ qrCache: qrCache!.storage });
+        await session.start('netease').settled;
+        await advanceToNextPoll();
+        expect(auth.startLogin).toHaveBeenCalledTimes(1);
+        session.stop({ cancelSession: false });
+        // 扫过的码不能再复用：必须重新取一张。
+        await session.start('netease').settled;
+        expect(auth.startLogin).toHaveBeenCalledTimes(2);
+    });
+
+    it('keeps the original createdAt on reuse, so the lifetime cannot be extended forever', async () => {
+        auth.getLoginTtlMs.mockReturnValue(60_000);
+        const session = createSession({ qrCache: qrCache!.storage });
+        await session.start('netease').settled;
+        const first = entryOf('netease');
+        session.stop({ cancelSession: false });
+        await manual.advance(10_000);
+        await session.start('netease').settled;
+        const second = entryOf('netease');
+        expect(second.createdAt).toBe(first.createdAt);
+    });
+});
+

@@ -163,6 +163,8 @@ export const createProviderAccountController = (deps: LibraryAccountControllerDe
         auth,
         clock,
         diagnostics: deps.diagnostics,
+        visibility: deps.visibility,
+        pageHide: deps.pageHide,
         log: deps.log,
         onConfirmed: event => handleConfirmed(event),
     });
@@ -445,7 +447,9 @@ export const createProviderAccountController = (deps: LibraryAccountControllerDe
         const sessionId = login.id;
         batch(() => {
             loginSeq += 1;
-            session.stop();
+            // 关窗不再向后端发 keyed 取消：每次取消都在白烧一次二维码生成，而服务端本就会让未扫过的旧码
+            // 被下一次登录接管。取消只留给显式退出登录。
+            session.stop({ cancelSession: false });
             login = null;
             watchLocalService(null);
         });

@@ -37,6 +37,13 @@ const createManualClock = (start = 1_700_000_000_000) => {
         },
         clearTimeout: handle => { timers.delete(handle as number); },
     };
+    /**
+     * 下一个计时器还有多久到点：测试按被测代码的真实排期推进，不抄实现里的间隔常量。
+     */
+    const nextTimerDelay = (): number => {
+        const due = [...timers.values()].map(timer => timer.at - now).sort((a, b) => a - b);
+        return due.length > 0 ? due[0] : 0;
+    };
     const advance = async (ms: number) => {
         const target = now + ms;
         for (; ;) {
@@ -52,7 +59,7 @@ const createManualClock = (start = 1_700_000_000_000) => {
         now = target;
         await flush();
     };
-    return { clock, advance, flush, pendingTimers: () => timers.size };
+    return { clock, advance, flush, nextTimerDelay, pendingTimers: () => timers.size };
 };
 
 const deferred = <T,>() => {
@@ -97,6 +104,19 @@ type Op = [string, ...unknown[]];
 
 let ops: Op[];
 let manual: ReturnType<typeof createManualClock>;
+
+/**
+ * 推进到下一次轮询实际排上的时刻（可推进 times 次）。
+ * 轮询间隔自本批次起是退避序列（2.0/2.5/3.2/4.1/5.3s，±15%），不再是固定的 2000ms；
+ * 旧期望基于固定 2000ms，故推进方式改为按被测代码真实排期，断言本身不变。
+ */
+const advanceToNextPoll = async (times = 1): Promise<void> => {
+    for (let i = 0; i < times; i += 1) {
+        await manual.flush();
+        const delay = manual.nextTimerDelay();
+        await manual.advance(delay > 0 ? delay : 1);
+    }
+};
 let log: ReturnType<typeof vi.fn<LibraryAccountLogger>>;
 
 /** 账户端口：每次 listProviders 都新建摘要对象（omni.getProviderSummaries 就是这样），用来验证快照身份的对齐。 */
@@ -178,7 +198,8 @@ const createController = (): LibraryAccountController => createProviderAccountCo
 /** 让当前会话的下一次轮询报 confirmed，并推进到那次轮询（以及确认后的收尾）走完。 */
 const confirmNextPoll = async () => {
     auth.checkLogin.mockResolvedValueOnce({ state: 'confirmed' } satisfies LoginState);
-    await manual.advance(POLL);
+    // 原为 advance(POLL)：旧期望基于固定 2000ms，改为推进到被测代码实际排的下一次轮询。
+    await advanceToNextPoll();
 };
 
 beforeEach(() => {
@@ -444,7 +465,7 @@ describe('providerAccountController · the sign-in', () => {
 
         await controller.selectLoginMethod('wechat');
         auth.checkLogin.mockResolvedValueOnce({ state: 'expired' } satisfies LoginState);
-        await manual.advance(POLL);
+        await advanceToNextPoll(); // 原为 advance(POLL)：旧期望基于固定 2000ms
         expect(controller.getSnapshot().login).toMatchObject({ phase: 'expired', selectedMethodId: 'wechat' });
         await controller.retryLogin();
         await manual.flush();
@@ -455,7 +476,7 @@ describe('providerAccountController · the sign-in', () => {
         auth.checkLogin.mockResolvedValueOnce({ state: 'error', failure: { case: 'retry-later', retryAfterMs: 30_000 } } satisfies LoginState);
         const controller = createController();
         await controller.startLogin('gamma');
-        await manual.advance(POLL);
+        await advanceToNextPoll(); // 原为 advance(POLL)：旧期望基于固定 2000ms
         expect(controller.getSnapshot().login?.failure).toMatchObject({ case: { id: 'retry-later', action: 'wait-then-retry' } });
         await expect(controller.retryLogin()).resolves.toEqual({ status: 'rejected', reason: 'cooling-down' });
         await manual.advance(30_000);
@@ -493,13 +514,17 @@ describe('providerAccountController · the sign-in', () => {
         expect(auth.dropRequestLimits).toHaveBeenCalled();
     });
 
-    it('closes the sign-in: cancels the session, clears the snapshot and voids a pending method discovery', async () => {
+    // 契约变更（task-8 批次1）：关窗不再发 keyed 取消——每次取消都在白烧一次二维码生成，
+    // 而服务端本就会让未扫过的旧码被下一次登录接管（deploy/docker/README.md:106）。取消只留给显式退出登录。
+    // 原断言为 toEqual([['cancel','gamma','key-1']])，改为空数组是设计变更，不是回归。
+    it('closes the sign-in: keeps the QR for the next sign-in to take over, clears the snapshot and voids a pending method discovery', async () => {
         const controller = createController();
         await controller.startLogin('gamma');
         await manual.flush();
         expect(controller.closeLogin()).toMatchObject({ status: 'closed' });
         expect(controller.getSnapshot().login).toBeNull();
-        expect(opsOf('cancel')).toEqual([['cancel', 'gamma', 'key-1']]);
+        // 关窗不再取消：旧码留给下一次登录接管（原断言为 [['cancel','gamma','key-1']]）。
+        expect(opsOf('cancel')).toEqual([]);
 
         const methods = deferred<LoginMethod[]>();
         auth.resolveLoginMethods.mockReturnValueOnce(methods.promise);
@@ -690,7 +715,7 @@ describe('providerAccountController · active provider and snapshot', () => {
 
         // 账户端口通知但内容没变（omni 每次都新建摘要对象）；轮询照旧回 waiting。
         accounts.notify();
-        await manual.advance(POLL);
+        await advanceToNextPoll(); // 原为 advance(POLL)：旧期望基于固定 2000ms
 
         expect(controller.getSnapshot()).toBe(before);
         expect(listener).not.toHaveBeenCalled();

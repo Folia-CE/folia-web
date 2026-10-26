@@ -31,9 +31,6 @@ export const SETTINGS_ANCHOR_DEFINITIONS = {
     rememberHomeCardPosition: { section: 'home' },
     gridViewCardSettings: { section: 'home' },
 
-    // pages/PlaybackPage
-    automixModels: { section: 'playback' },
-
     // pages/LyricsPage
     localLyricFormatOrder: { section: 'lyrics' },
 
@@ -44,6 +41,10 @@ export const SETTINGS_ANCHOR_DEFINITIONS = {
     audioOutputSettings: { section: 'playback' },
     lyrics: { section: 'lyrics' },
     scrobbleSettings: { section: 'integration' },
+
+    // pages/hifi/ on pages/PlaybackPage (desktop app only); the mpv output group only while mpv is the engine.
+    hifiEngine: { section: 'playback' },
+    hifiOutput: { section: 'playback' },
 
     // pages/GeneralPage, and the pinned commands on pages/InteractionPage
     languageSettings: { section: 'general' },
@@ -57,6 +58,7 @@ export const SETTINGS_ANCHOR_DEFINITIONS = {
     gridActionButton: { section: 'interaction' },
     gridPaletteHotkey: { section: 'interaction' },
     customShortcut: { section: 'interaction' },
+    globalShortcuts: { section: 'interaction' },
 
     // pages/IntegrationPage — the desktop app and the web build draw stage mode with different
     // rows; it is one destination.
@@ -80,9 +82,10 @@ export const SETTINGS_ANCHOR_DEFINITIONS = {
     wallpaperMode: { section: 'desktop' },
     updateCheck: { section: 'general' },
 
-    // pages/GraphicsPage
+    // pages/GraphicsPage; the render GPU row only in the Windows desktop app.
     graphicsPerformance: { section: 'graphics' },
     graphicsMotion: { section: 'graphics' },
+    gpuPreference: { section: 'graphics' },
 
     // pages/ModsPage
     modSystem: { section: 'mods' },

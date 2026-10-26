@@ -2,7 +2,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { useShallow } from 'zustand/react/shallow';
 import { CROSSFADE_MAX_SEC, CROSSFADE_MIN_SEC } from '../../../../services/automix/crossfadePlanner';
-import { modelsPresent, subscribeModelAvailability } from '../../../../services/automix/modelAvailability';
+import { modelsPresent, subscribeModelAvailability } from '../../../../services/analysis/modelAvailability';
 import { transitionCapabilities } from '../../../../services/automix/stems';
 import { announceTransition, type TransitionRenderer } from '../../../../services/automix/transitionCue';
 import { canAnalyseTracks } from '../../../../services/automix/transitionStrategy';
@@ -12,13 +12,13 @@ import { useDesktopSettingsStore } from '../../../../stores/useDesktopSettingsSt
 import { runsOnWindows } from '../../../../utils/platform';
 import { Button, Chips, Group, Reveal, Row, Segmented, Slider, Status, Toggle, option, type SettingsGroupDef, type SettingsOptionDef } from '../kit';
 import AudioOutputDeviceRow from './AudioOutputDeviceRow';
-import AutomixModelsGroup, { MODEL_OPTIONS } from './AutomixModelsGroup';
+import HifiSettings, { HIFI_OPTIONS } from './hifi/HifiSettings';
 import { useSettingsPage } from './settingsPageContext';
 
 // src/components/modal/settings/pages/PlaybackPage.tsx
-// The 播放控制 page: how one song hands over to the next (Folia transitions), where the sound goes
-// and how loud it is, what play and add-to-queue do, and (desktop app) the folded group of the
-// analysis models the full transition engine needs.
+// The 播放控制 page: (desktop app) which engine plays local and Navidrome songs, Web Audio or mpv,
+// with mpv's own settings under it (pages/hifi/); how one song hands over to the next (Folia
+// transitions), where the sound goes and how loud it is, what play and add-to-queue do.
 
 const TRANSITION: SettingsGroupDef = { id: 'transitionSettings', titleKey: 'options.transitionSettings' };
 const SOUND: SettingsGroupDef = { id: 'audioOutputSettings', titleKey: 'options.settingsHeadingSound' };
@@ -42,7 +42,7 @@ const O = {
     voiceInputPause: option(BEHAVIOR, 'voiceInputPause', 'options.voiceInputPause', { electronOnly: true, available: () => runsOnWindows() }),
 };
 
-export const OPTIONS: SettingsOptionDef[] = [...Object.values(O), ...Object.values(MODEL_OPTIONS)];
+export const OPTIONS: SettingsOptionDef[] = [...HIFI_OPTIONS, ...Object.values(O)];
 
 /**
  * The pass an animation chip plays when it is switched on: a ten-second blend at 120 BPM, addressed
@@ -112,6 +112,7 @@ const PlaybackPage: React.FC = () => {
 
     return (
         <>
+            {isElectron && <HifiSettings />}
             <Group def={TRANSITION}>
                 <Row option={O.transition}>
                     <Toggle checked={automix.enabled} onChange={automix.setEnabled} />
@@ -237,9 +238,6 @@ const PlaybackPage: React.FC = () => {
                     </Row>
                 )}
             </Group>
-
-            {/* The beat grid serves a crossfade too, so the models do not depend on the mode. */}
-            {capabilities.desktop && <AutomixModelsGroup />}
         </>
     );
 };

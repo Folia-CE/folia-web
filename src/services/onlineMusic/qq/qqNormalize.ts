@@ -183,11 +183,14 @@ export const normalizeQqUser = (raw: unknown): ProviderUser => {
     // 上游整个响应里没有 `avatarUrl` 这个名字 —— 那是后端凭据兜底路径给的字段名，
     // 也是正规化结果自己回填时的字段名，所以两个都要认，缓存水合才不会把头像洗掉。
     const avatarUrl = text(pick(profile, 'avatarUrl') ?? pick(info, 'logo', 'avatarUrl'));
+    // 会员等级不在登录资料里，由 qqProvider 另读 `/user/vip` 补上；这里只认缓存回填的数字。
+    const vipType = Number(pick(profile, 'vipType'));
 
     return {
         id: (id ?? '') as MediaId,
         nickname,
         ...(avatarUrl ? { avatarUrl } : {}),
+        ...(Number.isSafeInteger(vipType) && vipType >= 0 ? { vipType } : {}),
     };
 };
 
@@ -326,6 +329,14 @@ export const normalizeQqCollection = (raw: unknown, type = 'playlist'): Provider
     // 「我喜欢」是自建目录 201（GetPlaylistByUin 实测；getPlaylistTracks 也按它走 liked-songs 路由）。收藏条目的
     // dirId 是创建者账号里的目录号，所以还要 owned，别把收藏来的别人的「我喜欢」标成自己的。
     const isLiked = owned === true && Number(dirId) === QQ_LIKED_DIR_ID;
+    // GetPlaylistByUin gives seconds; normalized snapshots already carry milliseconds. The empty
+    // liked folder reports a different updateTime on every read, so it has no reliable version.
+    const updateTime = Number(item.updateTime);
+    const keptUpdatedAt = Number(item.updatedAt);
+    const updatedAt = isLiked && trackCount === 0 ? undefined
+        : Number.isFinite(keptUpdatedAt) && keptUpdatedAt > 0 ? keptUpdatedAt
+            : owned === true && Number.isFinite(updateTime) && updateTime > 0 ? updateTime * 1000
+                : undefined;
 
     return {
         providerId: 'qq',
@@ -346,7 +357,13 @@ export const normalizeQqCollection = (raw: unknown, type = 'playlist'): Provider
             ['dissid', dissid],
             ['dirShow', dirShow],
             ['owned', owned],
+            // 排行榜和电台不是歌单：探索页的卡片记下自己是哪一种（`list`）、对应的 id 和期数，
+            // getPlaylistTracks 按它改走对应的路由（qqLists.ts）。缓存回填时照样留着。
+            ['list', pick(existing, 'list')],
+            ['listId', pick(existing, 'listId')],
+            ['period', pick(existing, 'period')],
         ]),
+        ...(updatedAt !== undefined ? { updatedAt } : {}),
         ...(isLiked ? { isLiked: true } : {}),
     };
 };

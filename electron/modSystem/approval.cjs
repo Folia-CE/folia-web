@@ -1,7 +1,7 @@
 // electron/modSystem/approval.cjs
 // Whether a mod may run. The user's approval of a mod is stored together with
 // the digest of the files it was given for, and holds only while the files are
-// those; the native dialog that asks for it, with its text in the three
+// those; the native dialog that asks for it, with its text in the four
 // languages, is here too. Cut out of modSystem.cjs. How a digest and a
 // signature are computed stays in modDigest.cjs and modSignature.cjs.
 
@@ -13,7 +13,7 @@ const { dialog } = require('electron');
 const { shortDigest } = require('./modDigest.cjs');
 
 // Native confirmation dialog copy. The main process cannot reach the renderer's
-// i18n bundle, so the three shipped locales are mirrored here like main.cjs's
+// i18n bundle, so the four shipped locales are mirrored here like main.cjs's
 // own dialog strings.
 const TRUST_DIALOG_LOCALE = {
     'zh-CN': {
@@ -22,6 +22,10 @@ const TRUST_DIALOG_LOCALE = {
         risk: '模组是第三方代码，未经官方安全审计。一旦启用，它将以应用的完整权限运行：可读写本地文件、访问网络、读取或修改任意应用设置（包括 AI 服务地址与密钥），并可在界面中执行代码。请仅启用你信任来源的模组。',
         permissions: '声明的权限：',
         noPermissions: '声明的权限：无',
+        platformRead: (platforms) => `以你的账号读取平台数据（实验接口 platform.raw）：${platforms}。模组会以你在 Folia 登录的账号读取这些平台上的数据，例如听歌记录。`,
+        platformWrite: (platforms) => `以你的账号改动平台数据：${platforms}。模组还可以改动这些平台账号里的内容，例如点赞、歌单和关注。`,
+        queueReplace: '替换播放队列（playback.queue）：模组可以一次换掉整个播放队列，并结束私人 FM。替换后 Folia 会提示是哪个模组换的；在队列再被改动之前，可以撤销回替换前的队列。',
+        equalizerControl: '会改写你的音效设置（equalizer.control）：模组可以切换你的音效预设，或换上它自己的均衡器曲线。你的自定义音效不会被覆盖，在音频效果器里随时可以换回。',
         location: '安装位置：',
         fingerprint: '内容指纹：',
         client: '界面代码：',
@@ -40,12 +44,44 @@ const TRUST_DIALOG_LOCALE = {
         enable: '仍要启用',
         cancel: '取消',
     },
+    'zh-TW': {
+        title: '啟用模組',
+        message: (name, id) => `確定要啟用模組“${name}”（${id}）嗎？`,
+        risk: '模組是第三方程式碼，未經官方安全審計。一旦啟用，它將以應用的完整權限執行：可讀寫本地檔案、存取網路、讀取或修改任意應用設定（包括 AI 服務位址與金鑰），並可在介面中執行程式碼。請僅啟用你信任來源的模組。',
+        permissions: '宣告的權限：',
+        noPermissions: '宣告的權限：無',
+        platformRead: (platforms) => `以你的帳號讀取平臺數據（實驗介面 platform.raw）：${platforms}。模組會以你在 Folia 登入的帳號讀取這些平臺上的資料，例如聽歌記錄。`,
+        platformWrite: (platforms) => `以你的帳號改動平臺數據：${platforms}。模組還可以改動這些平臺帳號裡的內容，例如點贊、歌單和關注。`,
+        queueReplace: '替換播放佇列（playback.queue）：模組可以一次換掉整個播放佇列，並結束私人 FM。替換後 Folia 會提示是哪個模組換的；在佇列再被改動之前，可以撤銷回替換前的佇列。',
+        equalizerControl: '會改寫你的音效設定（equalizer.control）：模組可以切換你的音效預設，或換上它自己的等化器曲線。你的自定義音效不會被覆蓋，在音訊效果器裡隨時可以換回。',
+        location: '安裝位置：',
+        fingerprint: '內容指紋：',
+        client: '介面程式碼：',
+        noClient: '介面程式碼：無',
+        experimental: '選用的實驗介面：',
+        embedOrigins: '可嵌入的外部網頁：',
+        folia: '需要的 Folia 版本：',
+        verifiedRisk: '此模組帶有有效的 Folium 官方簽名，來源與內容已經過官方審查，且簽名後未被修改。啟用後它仍以應用的完整權限執行：可讀寫本地檔案、存取網路、讀取或修改任意應用設定（包括 AI 服務位址與金鑰），並可在介面中執行程式碼。',
+        signatureVerified: (key) => `簽名：官方認證（${key}）`,
+        betaRisk: '此模組是 Folium 先行測試版本：僅通過了安全審查，不保證功能實現的整潔，甚至功能可能完全無法工作，主要供社群開發者做創意實驗，普通使用者請勿輕易啟用。啟用後它仍以應用的完整權限執行：可讀寫本地檔案、存取網路、讀取或修改任意應用設定（包括 AI 服務位址與金鑰），並可在介面中執行程式碼。',
+        signatureBeta: (key) => `簽名：先行測試（${key}）`,
+        signatureUnsigned: '簽名：無（未經官方審查的第三方模組）',
+        signatureInvalid: (reason) => `簽名：不匹配（${reason}）。模組內容在簽名後被修改，或簽名無效，這份簽名不能作為審查依據。`,
+        rebind: '本次確認僅對當前檔案內容生效；模組檔案發生變化後需要重新確認。',
+        devSource: '開發模式：這個模組位於原始碼目錄的 mods/ 中，確認後修改它的檔案不會撤銷本次確認。安裝版和使用者模組目錄中的模組沒有這項豁免。',
+        enable: '仍要啟用',
+        cancel: '取消',
+    },
     en: {
         title: 'Enable mod',
         message: (name, id) => `Enable the mod "${name}" (${id})?`,
         risk: 'Mods are third-party code and are not security-audited. Once enabled, a mod runs with the full privileges of the app: it can read and write local files, access the network, read or change any app setting (including the AI service URL and key), and run code inside the UI. Only enable mods from sources you trust.',
         permissions: 'Declared permissions: ',
         noPermissions: 'Declared permissions: none',
+        platformRead: (platforms) => `Reads platform data as you (experimental platform.raw): ${platforms}. The mod can read data on these platforms with the account you signed in to Folia with, such as your listening records.`,
+        platformWrite: (platforms) => `Changes platform data as you: ${platforms}. The mod can also change what these platform accounts hold, such as likes, playlists and follows.`,
+        queueReplace: 'Replaces the play queue (playback.queue): the mod can swap out the whole play queue in one go, which also ends Personal FM. Folia then says which mod replaced it; until the queue changes again, you can undo that and get the queue from before back.',
+        equalizerControl: 'Changes your sound settings (equalizer.control): the mod can switch your sound preset, or put its own equalizer curve in place. Your custom sounds are never overwritten, and you can switch back in Audio effects at any time.',
         location: 'Installed at: ',
         fingerprint: 'Content fingerprint: ',
         client: 'UI code: ',
@@ -70,6 +106,10 @@ const TRUST_DIALOG_LOCALE = {
         risk: 'Mod adalah kode pihak ketiga dan tidak diaudit keamanannya. Setelah diaktifkan, mod berjalan dengan hak penuh aplikasi: dapat membaca dan menulis berkas lokal, mengakses jaringan, membaca atau mengubah pengaturan apa pun (termasuk URL dan kunci layanan AI), serta menjalankan kode di dalam antarmuka. Aktifkan hanya mod dari sumber yang Anda percayai.',
         permissions: 'Izin yang dideklarasikan: ',
         noPermissions: 'Izin yang dideklarasikan: tidak ada',
+        platformRead: (platforms) => `Membaca data platform atas nama Anda (API eksperimental platform.raw): ${platforms}. Mod dapat membaca data di platform ini dengan akun yang Anda pakai untuk masuk ke Folia, misalnya riwayat mendengarkan.`,
+        platformWrite: (platforms) => `Mengubah data platform atas nama Anda: ${platforms}. Mod juga dapat mengubah isi akun platform ini, misalnya suka, playlist, dan yang diikuti.`,
+        queueReplace: 'Mengganti antrean putar (playback.queue): mod dapat mengganti seluruh antrean putar sekaligus, sekaligus mengakhiri FM Pribadi. Setelah itu Folia memberi tahu mod mana yang menggantinya; selama antrean belum diubah lagi, Anda dapat mengurungkannya untuk kembali ke antrean sebelumnya.',
+        equalizerControl: 'Mengubah pengaturan suara Anda (equalizer.control): mod dapat mengganti preset suara Anda, atau memasang kurva equalizer miliknya sendiri. Suara kustom Anda tidak pernah ditimpa, dan Anda dapat kembali kapan saja di Efek audio.',
         location: 'Terpasang di: ',
         fingerprint: 'Sidik konten: ',
         client: 'Kode antarmuka: ',
@@ -198,11 +238,22 @@ const createModApproval = ({ app, store, enabledKey, getMainWindowSafe, getLocal
                     : locale.signatureUnsigned;
         const permissions = Array.isArray(runtime.manifest.permissions) ? runtime.manifest.permissions : [];
         const { client, experimental = [], embedOrigins = [], folia } = runtime.manifest;
+        // Folium 1.7: the platforms the mod may call as the user (platform.<id>.read / .write), said in words.
+        const platformsWith = (access) => permissions
+            .map((permission) => /^platform\.([^.]+)\.(read|write)$/.exec(String(permission)))
+            .filter((match) => match && match[2] === access)
+            .map((match) => match[1]);
+        const readPlatforms = platformsWith('read');
+        const writePlatforms = platformsWith('write');
         const detail = [
             signature.status === 'verified' ? locale.verifiedRisk : signature.status === 'beta' ? locale.betaRisk : locale.risk,
             '',
             signatureLine,
             permissions.length > 0 ? `${locale.permissions}${permissions.join(', ')}` : locale.noPermissions,
+            ...(readPlatforms.length > 0 ? [locale.platformRead(readPlatforms.join(', '))] : []),
+            ...(writePlatforms.length > 0 ? [locale.platformWrite(writePlatforms.join(', '))] : []),
+            ...(permissions.includes('playback.queue') ? [locale.queueReplace] : []),
+            ...(permissions.includes('equalizer.control') ? [locale.equalizerControl] : []),
             client ? `${locale.client}${client}` : locale.noClient,
             ...(experimental.length > 0 ? [`${locale.experimental}${experimental.join(', ')}`] : []),
             ...(embedOrigins.length > 0 ? [`${locale.embedOrigins}${embedOrigins.join(', ')}`] : []),

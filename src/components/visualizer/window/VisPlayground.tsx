@@ -7,7 +7,7 @@ import VisualizerRenderer from '../VisualizerRenderer';
 import { type StoredCustomLyricsFont, type SubtitleContentMode, type Theme, type VisualizerMode } from '../../../types';
 import { useMediaQuery } from '../../../hooks/useMediaQuery';
 import { selectVisualizerSettingsSnapshot, useVisualizerSettingsStore } from '../../../stores/useVisualizerSettingsStore';
-import { PictureGrid, Tooltip, type PictureState } from '../../modal/settings/kit';
+import { PictureGrid, Tooltip } from '../../modal/settings/kit';
 import { kitTransition, useKitReducedMotion } from '../../modal/settings/kit/motion';
 import StudioWindow from '../../shared/StudioWindow';
 import { visualizersRegistry } from '@/mods/folium/registries/visualizers';
@@ -15,7 +15,7 @@ import { useFoliumRegistryEntries } from '@/mods/runtime/registry';
 import { colorWithAlpha } from '../colorMix';
 import { type PreviewPlaceholderId } from '../PreviewPlaceholder';
 import { VISUALIZER_REGISTRY, getVisualizerModeLabel, getVisualizerRegistryEntry } from '../registry';
-import VisPlaygroundPreviewHotspots, { type VisPlaygroundEditSection } from './VisPlaygroundPreviewHotspots';
+import VisPlaygroundPreviewHotspots, { type VisPlaygroundEditSection, type VisPlaygroundHotspotSection } from './VisPlaygroundPreviewHotspots';
 import VisPlaygroundSampleStage from './VisPlaygroundSampleStage';
 import VisPlaygroundSettingsPanel from './VisPlaygroundSettingsPanel';
 import FontPicker, { type LocalFontEntry } from './FontPicker';
@@ -23,8 +23,11 @@ import { useTuningDrafts } from './useTuningDrafts';
 import { useVisualizerStyleAssets } from '../useVisualizerStyleAssets';
 import type { VisualizerBackgroundActions, VisualizerBackgroundConfig } from '../backgrounds/definition';
 import { LyricPreviewProvider, type LyricPreviewLook } from '../preview/LyricPreviewContext';
-import LyricStylePicture from '../preview/LyricStylePicture';
+import { drawLyricStyleChoice, RANDOM_VISUALIZER_CHOICE, selectLyricStyleChoice } from '../random/lyricStyleChoices';
 import { usePreviewClock } from '../preview/usePreviewClock';
+import PreviewSourceSwitch, { type PreviewSource } from '../preview/PreviewSourceSwitch';
+import { useLivePreviewFeed } from '../preview/useLivePreviewFeed';
+import { useStillClockPulse } from '../preview/stillClockPulse';
 
 interface VisPlaygroundProps {
     theme?: Theme;
@@ -116,8 +119,6 @@ const clampFontScale = (value: number) => Math.min(1.4, Math.max(0.85, value));
 /** How many pictures of lyric styles lie side by side under the sample: in the wide window, and where it is one column. */
 const SHELF_COLUMNS = { wide: 7, narrow: 4 };
 
-const drawStyle = (mode: VisualizerMode, state: PictureState) => <LyricStylePicture mode={mode} {...state} />;
-
 const VisPlayground: React.FC<VisPlaygroundProps> = ({
     theme,
     isDaylight,
@@ -177,9 +178,43 @@ const VisPlayground: React.FC<VisPlaygroundProps> = ({
     const backgroundOpacity = backgroundConfig?.common?.opacity ?? 0.75;
     const [previewPlaceholderId, setPreviewPlaceholderId] = useState<PreviewPlaceholderId>('default');
     const [isPreviewPaused, setIsPreviewPaused] = useState(false);
-    // The sample's clock; the small pictures of the styles follow it too.
+    const [previewSource, setPreviewSource] = useState<PreviewSource>('builtin');
+    const previewBoxRef = useRef<HTMLDivElement>(null);
+    // What the player shows now, when the sample is set aside for it; null while it has no lyrics.
+    const livePreview = useLivePreviewFeed({ enabled: previewSource === 'live', paused: isPreviewPaused, stageRef: previewBoxRef });
+    const live = livePreview.content;
+    // The small pictures still use the sample's clock while the big preview shows the live picture.
     const previewClock = usePreviewClock({ mode: visualizerMode, placeholderId: previewPlaceholderId, paused: isPreviewPaused });
     const previewPlaceholder = previewClock.placeholder;
+    // The sample, paused, has no change of time for a style mounted anew (a switch from the live picture).
+    useStillClockPulse({ time: previewClock.currentTime, still: isPreviewPaused && live === null, boxRef: previewBoxRef, restartKey: previewSource });
+    const shown = live
+        ? {
+            key: 'live',
+            currentTime: livePreview.currentTime,
+            audioPower: livePreview.audioPower,
+            audioBands: livePreview.audioBands,
+            duration: live.duration,
+            currentLineIndex: live.currentLineIndex,
+            lines: live.lines,
+            songTitle: live.songTitle,
+            coverUrl: live.coverUrl ?? undefined,
+            seed: live.seed,
+        }
+        : {
+            key: previewPlaceholderId,
+            currentTime: previewClock.currentTime,
+            audioPower: previewClock.audioPower,
+            audioBands: previewClock.audioBands,
+            duration: previewPlaceholder.loopDuration,
+            currentLineIndex: previewClock.currentLineIndex,
+            lines: previewPlaceholder.lines,
+            songTitle: previewPlaceholder.title,
+            coverUrl: previewPlaceholder.coverUrl,
+            // One seed per sample song, as the player's is the song's: a seed that changed
+            // with the style would lay the background out again on every switch.
+            seed: `vis-playground-${previewPlaceholderId}`,
+        };
     const [fontPickerTarget, setFontPickerTarget] = useState<'lyrics' | 'subtitle' | 'none'>('none');
     const [draftBackgroundOpacity, setDraftBackgroundOpacity] = useState(backgroundOpacity);
     const [draftVisualizerOpacity, setDraftVisualizerOpacity] = useState(visualizerOpacity);
@@ -247,10 +282,13 @@ const VisPlayground: React.FC<VisPlaygroundProps> = ({
     // changes, not only on language changes.
     const foliumVisualizerEntries = useFoliumRegistryEntries(visualizersRegistry);
     const modeOptions = useMemo(() => (
-        VISUALIZER_REGISTRY.map(entry => ({
-            label: getVisualizerModeLabel(entry.mode, t),
-            value: entry.mode,
-        }))
+        [
+            ...VISUALIZER_REGISTRY.map(entry => ({
+                label: getVisualizerModeLabel(entry.mode, t),
+                value: entry.mode,
+            })),
+            { label: t('ui.visualizerRandom'), value: RANDOM_VISUALIZER_CHOICE },
+        ]
         // eslint-disable-next-line react-hooks/exhaustive-deps
     ), [t, foliumVisualizerEntries]);
     // The window's own split: under it the column lies under the stage and the shelf is narrow.
@@ -285,7 +323,7 @@ const VisPlayground: React.FC<VisPlaygroundProps> = ({
     useEffect(() => { setActiveEditSection(initialEditSection); }, [initialEditSection]);
 
     const visualizerEntry = getVisualizerRegistryEntry(visualizerMode);
-    const hotspotLabels = useMemo<Record<Exclude<VisPlaygroundEditSection, 'common'>, string>>(() => ({
+    const hotspotLabels = useMemo<Record<VisPlaygroundHotspotSection, string>>(() => ({
         background: t('options.previewBackgroundHotspot'),
         visualizer: t('options.previewVisualizerHotspot'),
         subtitle: t('options.previewSubtitleHotspot'),
@@ -440,6 +478,7 @@ const VisPlayground: React.FC<VisPlaygroundProps> = ({
         <>
             {/* The sample always shows the theme being previewed, whatever the window's own colours. */}
             <div
+                ref={previewBoxRef}
                 className="relative min-h-[160px] flex-1 overflow-hidden rounded-xl shadow-[0_0_0_1px_var(--st-line)]"
                 style={{ backgroundColor: previewTheme.backgroundColor }}
             >
@@ -448,7 +487,7 @@ const VisPlayground: React.FC<VisPlaygroundProps> = ({
                     {/* Another sample song fades in. A newly chosen style is switched by the renderer, as in
                         the player: the background stays and only the style changes. */}
                     <motion.div
-                        key={previewPlaceholderId}
+                        key={shown.key}
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         transition={kitTransition('move', reducedKitMotion)}
@@ -457,21 +496,22 @@ const VisPlayground: React.FC<VisPlaygroundProps> = ({
                         <VisualizerRenderer
                             mode={visualizerMode}
                             animateStyleSwitch
-                            currentTime={previewClock.currentTime}
-                            duration={previewPlaceholder.loopDuration}
-                            currentLineIndex={previewClock.currentLineIndex}
-                            lines={previewPlaceholder.lines}
+                            currentTime={shown.currentTime}
+                            duration={shown.duration}
+                            currentLineIndex={shown.currentLineIndex}
+                            lines={shown.lines}
                             theme={previewTheme}
                             subtitleTheme={previewSubtitleTheme}
                             isDaylight={isDaylight}
-                            audioPower={previewClock.audioPower}
-                            audioBands={previewClock.audioBands}
-                            songTitle={previewPlaceholder.title}
+                            audioPower={shown.audioPower}
+                            audioBands={shown.audioBands}
+                            songTitle={shown.songTitle}
                             showText
                             staticMode={staticMode}
                             isPreviewMode
+                            paused={isPreviewPaused}
                             visualizerOpacity={draftVisualizerOpacity}
-                            coverUrl={previewPlaceholder.coverUrl}
+                            coverUrl={shown.coverUrl}
                             background={draftBackgroundConfig}
                             lyricsFontScale={normalizedFontScale}
                             subtitleFontScale={normalizedSubtitleFontScale}
@@ -486,9 +526,7 @@ const VisPlayground: React.FC<VisPlaygroundProps> = ({
                             visualizerTunings={tuningDrafts.sampleTunings}
                             onVisualizerTuningChange={styleDraft.change}
                             {...styleAssets}
-                            // One seed per sample song, as the player's is the song's: a seed that changed
-                            // with the style would lay the background out again on every switch.
-                            seed={`vis-playground-${previewPlaceholderId}`}
+                            seed={shown.seed}
                         />
                     </motion.div>
                 </VisPlaygroundSampleStage>
@@ -498,6 +536,7 @@ const VisPlayground: React.FC<VisPlaygroundProps> = ({
                     theme={previewTheme}
                     labels={hotspotLabels}
                 />
+                <PreviewSourceSwitch value={previewSource} onChange={setPreviewSource} liveEmpty={previewSource === 'live' && live === null} />
                 <Tooltip text={t(isPreviewPaused ? 'options.resumePreview' : 'options.pausePreview')} className="absolute right-3 top-3 z-40 inline-flex">
                     <button
                         type="button"
@@ -515,11 +554,14 @@ const VisPlayground: React.FC<VisPlaygroundProps> = ({
                     <span className="ml-1.5 font-normal text-[color:var(--st-t3)]">{modeOptions.length}</span>
                 </h3>
                 <PictureGrid
-                    value={visualizerMode}
+                    value={settings.randomVisualizerModePerSong ? RANDOM_VISUALIZER_CHOICE : visualizerMode}
                     options={modeOptions}
-                    picture={drawStyle}
+                    picture={drawLyricStyleChoice}
                     columns={isWideWindow ? SHELF_COLUMNS.wide : SHELF_COLUMNS.narrow}
-                    onChange={mode => onVisualizerModeChange?.(mode)}
+                    onChange={mode => {
+                        selectLyricStyleChoice(mode, next => onVisualizerModeChange?.(next));
+                        setActiveEditSection('visualizer');
+                    }}
                     label={t('ui.animationMode')}
                     maxHeight={250}
                     className="-mx-4"

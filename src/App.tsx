@@ -18,7 +18,6 @@ import { useProviderSignOut } from './components/app/dialogs/useProviderSignOut'
 import LoginHost from './components/login/LoginHost';
 import { useSettingsDialogModel } from './components/app/dialogs/useSettingsDialogModel';
 import AppOverlays from './components/app/overlays/AppOverlays';
-import AutomixModelReminder from './components/modal/AutomixModelReminder';
 import PonderHost from './components/ponder/PonderHost';
 // Lazy so animejs (~38KB gz) stays out of the bootstrap chunk: this overlay only ever draws when the
 // animation switch is on AND the mode is automix, both off by default, so it is mounted only then.
@@ -29,6 +28,7 @@ import { useVisualizerAroundWall, wallExitCompleted, WALL_LAYER } from './compon
 import { useMorphKeepsHost } from './components/collectionFlight';
 import { UserGuideModal } from './components/modal/UserGuideModal';
 import ReleaseNotesDialog from './components/modal/ReleaseNotesDialog';
+import LegacyModelsPrompt from './components/modal/LegacyModelsPrompt';
 import { PlaybackEntryViewPrompt } from './components/modal/playback-entry-view/PlaybackEntryViewPrompt';
 import { LatticeFmNotice } from './components/modal/playback-entry-view/LatticeFmNotice';
 import { useStartupExperienceGate } from './hooks/useStartupExperienceGate';
@@ -70,6 +70,7 @@ import { createQueueMutations } from './components/app/player-panel/createQueueM
 import { Album, Artist, LyricData, Theme, PlayerState, SongResult, ReplayGainMode, StatusMessage, PlaybackContext, StageLoopMode, UnifiedSong } from './types';
 import type { LocalSong } from './types';
 import { getLocalSongArrayBuffer } from './services/localMusicService';
+import { registerLocalTrackFileReader } from './services/analysis/trackAudio';
 import type { MediaId, OnlineProviderId, ProviderCollection } from './types/onlineMusic';
 import { resolveSongCatalogRef } from './services/onlineMusic/catalogRefs';
 import { omni } from './services/onlineMusic/omni';
@@ -85,7 +86,19 @@ import { useLibraryAccountProviders } from './library/core/account/useLibraryAcc
 import { resolveActiveProviderSummary } from './library/core/account/accountRules';
 import { useAppPreferences } from './hooks/useAppPreferences';
 import { useElectronPlaybackBridge } from './components/app/playback/bridges/useElectronPlaybackBridge';
+import { useHifiPlaybackBridge } from './components/hifi/useHifiPlaybackBridge';
+import { seekHifiRoute } from './components/hifi/hifiRouteTransport';
+import { useHifiAutomixGate } from './components/hifi/useHifiAutomixGate';
+import { useWebEngineYield } from './components/hifi/useWebEngineYield';
+import { useHifiMediaSessionKeepAlive } from './components/hifi/useHifiMediaSessionKeepAlive';
+import { useHifiMpris } from './components/hifi/useHifiMpris';
+import { useHifiWebRouteNotice } from './components/hifi/useHifiWebRouteNotice';
+import { isHifiRoute, useHifiTrackStore } from './services/hifi/hifiPlayback';
+import { hifiEngine } from './services/hifi/hifiEngine';
+import { selectHifiEngineConfig, useHifiSettingsStore } from './stores/useHifiSettingsStore';
 import { useElectronDisplaySleepBlocker } from './hooks/useElectronDisplaySleepBlocker';
+import { useBackgroundLyricHold } from './components/app/backgroundThrottling/useBackgroundLyricHold';
+import { readLiveLyricTime, useBackgroundLyricHoldStore } from './components/app/backgroundThrottling/backgroundLyricHoldStore';
 import { useSleepTimer } from './hooks/useSleepTimer';
 import { useProviderNotices } from './components/app/useProviderNotices';
 import { useLocalLibraryAutoScan } from './hooks/useLocalLibraryAutoScan';
@@ -93,6 +106,8 @@ import { useElectronVideoExportController } from './hooks/useElectronVideoExport
 import { useElectronWindowPlaybackHandoff } from './components/app/playback/restore/useElectronWindowPlaybackHandoff';
 import { useMediaSessionBridge } from './hooks/useMediaSessionBridge';
 import { usePlayerChromeAutoHide } from './hooks/usePlayerChromeAutoHide';
+import { useMacWallpaperHitRegions } from './hooks/useMacWallpaperHitRegions';
+import { useIdleCursorHide } from './hooks/useIdleCursorHide';
 import { usePlaybackAudioBridge } from './components/app/playback/bridges/usePlaybackAudioBridge';
 import { useTranscodeFallback } from './hooks/useTranscodeFallback';
 import { useAutomixDecks, type AutomixDeckId } from './services/automix/useAutomixDecks';
@@ -108,6 +123,7 @@ import { usePlaybackQueueController } from './components/app/playback/start/useP
 import { usePlaybackTransportController } from './components/app/playback/bridges/usePlaybackTransportController';
 import { useLocalLibraryCatalog } from './hooks/useLocalLibraryCatalog';
 import { usePlaybackVisualizerBridge } from './components/app/playback/bridges/usePlaybackVisualizerBridge';
+import { useLyricReadHead } from './components/app/playback/bridges/useLyricReadHead';
 import { useRandomVisualizerMode } from './hooks/useRandomVisualizerMode';
 import { useObsBrowserSourcePublisher } from './hooks/useObsBrowserSourcePublisher';
 import { useLyricApiPublisher } from './hooks/useLyricApiPublisher';
@@ -120,8 +136,9 @@ import { resolveCommandPaletteSearchSource, resolveSearchSource, useSearchNaviga
 import { useOnlineProviderAccountStore } from './stores/useOnlineProviderAccountStore';
 import { useShallow } from 'zustand/react/shallow';
 import { clampMediaVolume, toSafeRemoteUrl } from './utils/appPlaybackHelpers';
+import { hasLoopedToStart } from './services/playedTrackCache';
 import { getOnlineProviderIdForSong, isLocalPlaybackSong, isNavidromePlaybackSong, isStagePlaybackSong } from './utils/appPlaybackGuards';
-import { readLyricOffset, writeLyricOffset } from './utils/lyrics/lyricOffsetMemory';
+import { writeLyricOffset } from './utils/lyrics/lyricOffsetMemory';
 import { FALLBACK_AI_DUAL_THEME } from './services/themeSanitizer';
 import { BASE_DUAL_THEME, DAYLIGHT_THEME, DEFAULT_THEME } from './services/baseThemes';
 import { initializeSyncCoordinator } from './services/sync/syncCoordinator';
@@ -167,6 +184,7 @@ import { usePlayerBottomBarPositioningEntry } from './hooks/usePlayerBottomBarPo
 import { PlayerBottomBarLayoutContext } from './components/floating-player/PlayerBottomBarLayoutContext';
 import { useFoliumHostBridge } from './mods/runtime/hostBridge';
 import { useFoliumHostActions } from './mods/runtime/hostActions';
+import { refreshPrefetchAfterQueueEdit } from './services/prefetchService';
 import { FoliumStageLayerSlot } from './mods/folium/registries/stageLayers';
 import { errorFields } from './utils/errorText';
 import { runsOnWindows } from './utils/platform';
@@ -291,6 +309,14 @@ export default function App() {
         () => ({ mode: transitionMode, crossfadeMaxSec, performance: transitionPerformance }),
         [transitionMode, crossfadeMaxSec, transitionPerformance],
     );
+    // The analysis worker keeps htdemucs loaded while automix can ask for it, and releases it the
+    // moment it cannot - the switch off, or the crossfade mode, which reads no model. Sent on mount
+    // too: the main process starts out assuming off. See electron/analysis/host.cjs.
+    // (From the PR #750 re-review, 2026-10-19: it no longer keeps htdemucs while automix can ask - it
+    // releases it a minute after each run - but the moment automix cannot still releases it at once.)
+    useEffect(() => {
+        window.electron?.setAutomixEnabled?.(automixEnabled && transitionMode === 'automix');
+    }, [automixEnabled, transitionMode]);
 
     const startupExperience = useStartupExperienceGate();
 
@@ -408,6 +434,8 @@ export default function App() {
         preventDisplaySleepDuringPlayback,
         wallpaperMode,
     } = useDesktopSettingsStore(useShallow(selectDesktopSettingsSnapshot));
+    // macOS wallpaper mode: click catchers over the controls, so Stage Manager ignores those clicks.
+    useMacWallpaperHitRegions(wallpaperMode);
     const {
         stageTrackPillMode,
         stageTrackPillOnHome,
@@ -431,6 +459,7 @@ export default function App() {
         autoHidePlayerChrome,
         handleToggleAutoHidePlayerChrome,
         autoHideCursorWithPlayerChrome,
+        hideCursorWhenIdle,
         alwaysShowMainWindowTitlebar,
         hideFullscreenButton,
         handleToggleTransparentPlayerBackground,
@@ -465,6 +494,7 @@ export default function App() {
     const {
         visualizerMode,
         randomVisualizerModePerSong,
+        randomVisualizerModes,
         handleSetVisualizerMode,
     } = useVisualizerSettingsStore(useShallow(selectVisualizerSettingsSnapshot));
 
@@ -472,6 +502,9 @@ export default function App() {
         preventDisplaySleepDuringPlayback,
         playerState === PlayerState.PLAYING,
     );
+    useBackgroundLyricHold();
+    // The app.overlay mod layers read the same lyric clock and line the hold keeps still: paused with it.
+    const backgroundLyricHeld = useBackgroundLyricHoldStore(state => state.held);
 
     const visualizerTunings = useVisualizerTunings();
 
@@ -499,6 +532,7 @@ export default function App() {
     useRandomVisualizerMode({
         currentSong,
         enabled: randomVisualizerModePerSong,
+        modes: randomVisualizerModes,
         visualizerMode,
         setVisualizerMode: handleSetVisualizerMode,
     });
@@ -583,9 +617,14 @@ export default function App() {
             const nextVolume = pendingVolumePreviewRef.current;
             if (nextVolume !== null) {
                 syncOutputGain(nextVolume, 0.015);
+                // On HiFi with software volume the drag is heard from mpv; the engine skips a config it already has.
+                const hifiSettings = useHifiSettingsStore.getState();
+                if (isHifiRoute() && hifiSettings.softwareVolume) {
+                    void hifiEngine.configure(selectHifiEngineConfig(hifiSettings, nextVolume, isMuted));
+                }
             }
         });
-    }, [syncOutputGain]);
+    }, [isMuted, syncOutputGain]);
 
     const {
         shouldRefreshCurrentOnlineAudioSource,
@@ -818,6 +857,7 @@ export default function App() {
         isDev,
         isElectronWindow,
         audioRef,
+        blobUrlRef,
         shouldAutoPlayRef: shouldAutoPlay,
         pendingResumeTimeRef,
         lastAudioRecoverySourceRef,
@@ -1082,6 +1122,9 @@ export default function App() {
     // usePlaybackAudioBridge). A ref rather than a prop because the writer does not exist yet at this
     // call - the same ordering the harvest/advance callbacks inside the hook solve the same way.
     const cachePlayedOutRef = useRef<(song: SongResult, src: string | null) => void>(() => { });
+    // The active deck's last position on single loop, with the source it was on: a looping track
+    // never fires `ended`, so its wrap back to the start is what says it was played through.
+    const loopPositionRef = useRef<{ src: string; time: number } | null>(null);
 
     // Reads a local track's bytes off its own file handle, so automix can separate a next-up local
     // song whose head has no prefetch URL and never enters the online media cache. Resolved here
@@ -1091,14 +1134,22 @@ export default function App() {
         const local = localSongs.find(candidate => candidate.id === song.localRef.songId);
         return getLocalSongArrayBuffer((local ?? song) as unknown as LocalSong);
     }, [localSongs]);
+    // The same reader for every analyser (analysis/trackAudio.ts): 智能动感模式 and automix's
+    // profile read a local track that has no URL in hand through it too.
+    useEffect(() => {
+        registerLocalTrackFileReader(getLocalStemBytes);
+        return () => registerLocalTrackFileReader(null);
+    }, [getLocalStemBytes]);
 
+    // mpv is not one of the two decks a blend needs: off while this song or the next one plays on HiFi.
+    const hifiBlocksAutomix = useHifiAutomixGate();
     const automix = useAutomixDecks({
         audioRef,
         audioContextRef,
         currentSongKeyRef: currentSongRef,
         coverUrl,
         loopMode: effectiveLoopMode,
-        isEnabled: automixEnabled && !isNowPlayingStageActive,
+        isEnabled: automixEnabled && !isNowPlayingStageActive && !hifiBlocksAutomix,
         transition: transitionSettings,
         onAdvanceTrack: () => {
             // Same advance the end of a track would trigger, only early enough for the outgoing
@@ -1117,6 +1168,8 @@ export default function App() {
     });
 
     automixRef.current = automix;
+    // The route flipping to HiFi silences both decks and suspends the AudioContext before mpv opens the device.
+    useWebEngineYield({ audioRef, audioContextRef, automix });
 
     /**
      * The now-playing picture, which lags the app's own idea of what is playing.
@@ -1165,35 +1218,8 @@ export default function App() {
         if (element) currentTime.set(element.currentTime);
     }, [audioRef, currentTime, getDisplayElement, isShowingTail]);
 
-    // Restore the displayed song's remembered manual offset (0 when never adjusted, so a fresh
-    // song behaves exactly like the old reset). Keyed on the DISPLAYED song, not the playing one:
-    // this is what the lyrics on screen are read against, and firing it when a blend arms would
-    // both mis-offset the outgoing lyrics and snap their read-head to zero - a lyric view that
-    // scrolls back to the top of a song it is still showing, which reads as an early song change.
-    // currentSongFullRef.current holds the live song for the change handler above, so a user's
-    // correction is still saved against the track the app has actually committed to.
-    //
-    // There must be exactly ONE of these. Upstream grew its own copy keyed on `currentSong`, the
-    // merge kept both, and the live-keyed one fired on every blend ARM - snapping the read-head to
-    // the top of the song still on screen, which the diorama reads as a loop restart and answers
-    // with a full camera flight that lands back where it started. That is the "it changes song,
-    // then changes song again" report.
-    useEffect(() => {
-        const nextOffsetMs = readLyricOffset(displaySong?.id);
-        setLyricTimelineOffsetMs(nextOffsetMs);
-        lyricCurrentTime.set(-(nextOffsetMs + globalLyricTimelineOffsetMs) / 1000);
-        // Exactly ONE of these per song change, including across an automix blend. Two inside one
-        // transition means the duplicate effect described above is back: the second one fires on
-        // the arm, resets the read-head under the song still on screen, and the diorama answers it
-        // with a camera flight that lands where it started.
-        console.log(
-            `[Lyrics] read-head reset for the DISPLAYED song ${String(displaySong?.id ?? 'none')}`
-            + ` (per-song ${nextOffsetMs}ms + device ${globalLyricTimelineOffsetMs}ms)`,
-        );
-        // globalLyricTimelineOffsetMs is intentionally not a dependency: it is a device-level constant
-        // the user tunes in Lab settings, and re-running this effect on it would fight the panel value.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [displaySong?.id, lyricCurrentTime]);
+    // Restores the displayed song's offset and resets its read-head, unless a blend handed it over.
+    const incomingLyricTimelineOffsetMs = useLyricReadHead(globalLyricTimelineOffsetMs);
 
     /**
      * The now playing card is allowed on screen right now.
@@ -1323,6 +1349,7 @@ export default function App() {
         syncOutputGain,
         getTargetPlaybackVolume,
         getCoverUrl,
+        isTransitionAudible: automix.isTransitionAudible,
     });
 
     const handleTranscodeFallback = useTranscodeFallback({
@@ -1374,6 +1401,7 @@ export default function App() {
         pauseDuringTransition: handlePauseDuringTransition,
         isTransitionAudible: automix.isTransitionAudible,
     });
+    useHifiPlaybackBridge({ handleNextTrack, playSong, shouldAutoPlayRef: shouldAutoPlay, isLyricsLoading, effectiveLoopMode, isFmMode });
     useNavidromeScrobbleReporter({
         audioRef,
         currentSong,
@@ -1399,7 +1427,7 @@ export default function App() {
         taskbarPlayerStateRef,
     } = useTransportCommandRefs({ resumePlayback, pausePlayback, handlePrevTrack, handleNextTrack });
 
-    useMediaSessionBridge({
+    const mediaSessionOptions = {
         audioRef,
         // All three describe the DISPLAYED track, and that is the whole of the fix: the metadata,
         // the clock the position is read off, and the source the readiness guard compares against.
@@ -1419,7 +1447,12 @@ export default function App() {
         mediaSessionPrevRef,
         mediaSessionNextRef,
         isNowPlayingControlDisabledRef,
-    });
+    };
+    useMediaSessionBridge(mediaSessionOptions);
+    // Linux: on the HiFi route the system media controls come from main's MPRIS, fed the same.
+    useHifiMpris(mediaSessionOptions);
+    useHifiMediaSessionKeepAlive();
+    useHifiWebRouteNotice();
 
     const {
         exportState,
@@ -1490,6 +1523,7 @@ export default function App() {
         getPlayerCapDisplayTime,
         syncNowPlayingClock,
         lyricTimelineOffsetMs: effectiveLyricTimelineOffsetMs,
+        incomingLyricTimelineOffsetMs,
     });
 
     const {
@@ -1574,6 +1608,8 @@ export default function App() {
         visualizerMode,
     ]);
     const isNowPlayingControlDisabled = isNowPlayingStageActive;
+    const playbackRoute = usePlaybackStore(state => state.playbackRoute);
+    const hasHifiTrack = useHifiTrackStore(state => state.current !== null);
 
     useElectronWindowChrome();
     const {
@@ -1594,16 +1630,20 @@ export default function App() {
         stageActiveEntryKind,
         audioSrc,
         duration,
+        playbackRoute,
+        hasHifiTrack,
     }), [
         activePlaybackContext,
         audioSrc,
         currentView,
         disableHomeDynamicBackground,
         duration,
+        hasHifiTrack,
         hidePlayerProgressBar,
         hidePlayerRightPanelButton,
         hidePlayerTranslationSubtitle,
         isNowPlayingControlDisabled,
+        playbackRoute,
         stageActiveEntryKind,
     ]);
     // 播放页空闲时连指针一起隐藏。复用控制栏的自动隐藏时钟（3 秒无鼠标移动），不新开计时器：
@@ -1615,6 +1655,8 @@ export default function App() {
         && playerChromeVisibilityMode === 'auto-hide'
         && !isMainWindowClickThroughEnabled
         && isPlayerChromeHidden;
+    // 独立隐藏指针：空闲一段就自己藏起来，控制栏保持显示。与控制栏的自动隐藏互不依赖，谁满足谁藏。
+    const idleCursorHidden = useIdleCursorHide(isPlayerView && hideCursorWhenIdle && !isMainWindowClickThroughEnabled);
     const isSettingsModalOpen = settingsModalState.isOpen;
     const {
         obsBrowserSourceStatus,
@@ -1622,8 +1664,10 @@ export default function App() {
         refreshObsBrowserSourceStatus,
     } = useObsBrowserSourcePublisher({
         isElectronWindow,
+        audioRef,
+        getDisplayAudioElement: automix.getDisplayElement,
         stageSource,
-        coverUrl,
+        coverUrl: displayCoverUrl,
         offsetMs: effectiveLyricTimelineOffsetMs,
         theme: visualizerTheme,
         subtitleTheme: visualizerSubtitleTheme,
@@ -1637,6 +1681,7 @@ export default function App() {
         isElectronWindow,
         lyrics,
         offset: effectiveLyricTimelineOffsetMs,
+        audioSrc,
     });
     const canGenerateAITheme = Boolean((lyrics?.lines.length ?? 0) > 0 || currentSong?.isPureMusic);
     const generateCurrentSongTheme = useCallback(() => {
@@ -1966,6 +2011,8 @@ export default function App() {
      * the live song, queue-mode and blend state.
      */
     seekDuringTransitionRef.current = (time: number) => {
+        // HiFi route: mpv seeks. Arrow keys and the remote seek mpv before this, so it is seekMainAudio's and resumes.
+        if (seekHifiRoute(time, { resume: true })) return true;
         const tailElement = cancelBlendToDisplayedTrack(true);
         if (!tailElement) return false;
         const seekTarget = Math.max(0, time);
@@ -2018,7 +2065,8 @@ export default function App() {
             return;
         }
 
-        const playbackTime = Math.max(0, lyricTimeSec + currentTime.get() - lyricCurrentTime.get());
+        // Not lyricCurrentTime itself: 后台节流 holds that still while the window is hidden and playback runs on.
+        const playbackTime = Math.max(0, lyricTimeSec + currentTime.get() - readLiveLyricTime());
         if (activePlaybackContext === 'stage' && stageActiveEntryKind === 'lyrics' && !audioSrc) {
             syncStageLyricsClock(playbackTime, duration, playerState, stageLyricsClockRef.current.startTimeSec);
             currentTime.set(playbackTime);
@@ -2064,6 +2112,8 @@ export default function App() {
         isLiked: commandPaletteContext.playback.isSongLiked,
         controlsDisabled: isNowPlayingControlDisabled,
         isLyricsLoading,
+        persistQueue: persistLastPlaybackCache,
+        refreshQueuePrefetch: (song, previous, next) => refreshPrefetchAfterQueueEdit(song, previous, next, audioQuality, user?.id),
     });
 
     const visualizerRendererModel = useVisualizerRendererModel({
@@ -2390,11 +2440,15 @@ export default function App() {
     // The two automix decks are identical and interchangeable. Every handler below ignores the
     // deck that is not currently active, so a track fading out in the background can never drive
     // the progress bar, the duration, the queue, or the player state.
+    // On the HiFi route mpv plays the song: no deck gets a source (resolveDeckSrc would hand the
+    // active one a warmed source), and every handler below does nothing, so a deck that still
+    // fires an event (its pause on the way out) never drives the HiFi song.
     const renderAudioDeck = (deck: AutomixDeckId, register: (element: HTMLAudioElement | null) => void) => (
         <audio
             key={deck}
             ref={register}
-            src={automix.deckSrc(deck)}
+            data-playback-deck={deck}
+            src={playbackRoute === 'hifi' ? undefined : automix.deckSrc(deck)}
             preload="auto"
             crossOrigin="anonymous"
             loop={effectiveLoopMode === 'one' && automix.activeDeck === deck}
@@ -2424,6 +2478,7 @@ export default function App() {
                 }
             }}
             onPlay={(e) => {
+                if (isHifiRoute()) return;
                 if (!automix.isActiveDeck(e.currentTarget)) return;
                 shouldAutoPlay.current = false;
                 // The same split onTimeUpdate, onSeeked and onLoadedMetadata all make, and the two
@@ -2433,6 +2488,7 @@ export default function App() {
                 setPlayerState(PlayerState.PLAYING);
             }}
             onPlaying={(e) => {
+                if (isHifiRoute()) return;
                 if (!automix.isActiveDeck(e.currentTarget)) return;
                 shouldAutoPlay.current = false;
                 if (!isShowingTail) currentTime.set(e.currentTarget.currentTime);
@@ -2450,6 +2506,8 @@ export default function App() {
                 // A pause that flushing a fade-out made, while a new song is already being set up:
                 // the transport state and play intent belong to that song now.
                 if (consumeProgrammaticPause(e.currentTarget)) return;
+                // The Web engine yielding to mpv pauses the deck: the HiFi song's autoplay intent stays.
+                if (isHifiRoute()) return;
                 if (!automix.isActiveDeck(e.currentTarget)) return;
                 // A deck whose source failed fires `pause` immediately AFTER `error` - Chromium
                 // clears the play state as part of failing the load - and that is not the listener
@@ -2465,6 +2523,7 @@ export default function App() {
                 }
             }}
             onTimeUpdate={(e) => {
+                if (isHifiRoute()) return;
                 const audioElement = e.currentTarget;
                 const isActive = automix.isActiveDeck(audioElement);
                 // The clock and the transport are driven by different decks during a transition.
@@ -2479,6 +2538,23 @@ export default function App() {
                 // state describes what the app is playing, and the transition check has to read
                 // the position of the deck the NEXT blend will be planned from.
                 if (!isActive) return;
+                // Single loop: a wrap from the end back to the start is this track played in full,
+                // cached as `onEnded` caches one (which a looping element never fires). Only on the
+                // same source, so skipping to the next song near the end of this one is not a wrap.
+                if (audioElement.loop) {
+                    const previous = loopPositionRef.current;
+                    const src = audioElement.currentSrc;
+                    loopPositionRef.current = { src, time: audioElement.currentTime };
+                    if (
+                        previous?.src === src
+                        && hasLoopedToStart(previous.time, audioElement.currentTime, audioElement.duration)
+                        && audioSrc && !audioSrc.startsWith('blob:') && currentSong && !isStagePlaybackSong(currentSong)
+                    ) {
+                        cacheSongAssets();
+                    }
+                } else if (loopPositionRef.current) {
+                    loopPositionRef.current = null;
+                }
                 // A track that is not moving is not approaching anything. `pause()` fires one last
                 // timeupdate of its own, and a mid-blend pause cancels onto THIS deck before pausing
                 // it - so that stray tick arrives with the deck already active and the track sitting
@@ -2494,6 +2570,7 @@ export default function App() {
                 automix.checkTransitionPoint(audioElement.currentTime);
             }}
             onSeeked={(e) => {
+                if (isHifiRoute()) return;
                 // Same split as onTimeUpdate: whichever deck the bar is showing is the one a seek
                 // on it has to be reflected from.
                 const isActive = automix.isActiveDeck(e.currentTarget);
@@ -2526,6 +2603,8 @@ export default function App() {
             //     }
             // }}
             onEnded={(e) => {
+                // mpv's own end advances the queue on the HiFi route (useHifiPlaybackBridge).
+                if (isHifiRoute()) return;
                 // A track finishing in the background has already handed the queue over.
                 if (!automix.isActiveDeck(e.currentTarget)) {
                     automix.handleTailEnded();
@@ -2551,6 +2630,7 @@ export default function App() {
                 }
             }}
             onLoadedMetadata={(e) => {
+                if (isHifiRoute()) return;
                 const audioElement = e.currentTarget;
                 if (!automix.isActiveDeck(audioElement)) return;
                 setDuration(audioElement.duration);
@@ -2575,6 +2655,7 @@ export default function App() {
                 currentTime.set(0); // Ensure currentTime is reset when new audio loads
             }}
             onError={(e) => {
+                if (isHifiRoute()) return;
                 const audioElement = e.currentTarget;
                 const isActiveDeck = automix.isActiveDeck(audioElement);
                 const reportedDuration = Number.isFinite(audioElement.duration) && audioElement.duration > 0
@@ -2742,6 +2823,7 @@ export default function App() {
                                 currentSong={displaySong}
                                 playerState={displayPlayerState}
                                 currentTime={currentTime}
+                                lyricCurrentTime={lyricCurrentTime}
                                 playbackDuration={displayDuration}
                                 canTogglePlayback={canToggleCurrentPlayback}
                                 queue={playQueue}
@@ -2775,7 +2857,7 @@ export default function App() {
             {/* The visualizer is away while the wall covers it. When it is taken down and put
                 back, and when it comes up in a fade of this layer, is wallLayer.ts's. */}
             <div
-                className={`absolute inset-0 z-0${shouldHidePlayerCursor ? ' cursor-auto-hidden' : ''}${visualizerAroundWall.fadesIn ? ' visualizer-comes-up' : ''}`}
+                className={`absolute inset-0 z-0${(shouldHidePlayerCursor || idleCursorHidden) ? ' cursor-auto-hidden' : ''}${visualizerAroundWall.fadesIn ? ' visualizer-comes-up' : ''}`}
                 data-testid="player-visual-surface"
                 data-library-backdrop-blur={blursVisualizerBackdrop || undefined}
                 style={visualizerBackdropStyle(blursVisualizerBackdrop)}
@@ -2800,7 +2882,7 @@ export default function App() {
                 slot="app.overlay"
                 theme={theme}
                 isDaylight={isDaylight}
-                paused={displayPlayerState !== PlayerState.PLAYING}
+                paused={displayPlayerState !== PlayerState.PLAYING || backgroundLyricHeld}
                 className="fixed inset-0 pointer-events-none z-[1000]"
             />
 
@@ -2818,9 +2900,8 @@ export default function App() {
                 </Suspense>
             )}
 
-            {/* Same arrangement, same reason. Mounted here rather than beside either of the two
-                switches that can open it, so that both reach the same one. */}
-            <AutomixModelReminder isDaylight={isDaylight} />
+            {/* 旧版 automix 模型留在用户自选目录里时，问一次要不要删；没有就什么都不画。 */}
+            <LegacyModelsPrompt isDaylight={isDaylight} />
 
             {/* 思索教程。常驻的只有悬停探测和提示胶囊；教程层自己走 React.lazy，
                 animejs 不进 bootstrap chunk。 */}

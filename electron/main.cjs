@@ -26,6 +26,7 @@ const {
   REMOTE_CONTROL_HIDE_TITLEBAR_SETTING_KEY,
   REMOTE_CONTROL_CLICK_THROUGH_SETTING_KEY,
   REMOTE_CONTROL_EXPAND_COVER_SETTING_KEY,
+  REMOTE_CONTROL_WINDOW_POSITION_SETTING_KEY,
   readRemoteControlWindowSettings,
   shouldShowRemoteUnlockTrayItem,
   applyRemoteControlMouseIgnore,
@@ -36,6 +37,7 @@ const {
   getInitialRemoteControlWindowPosition,
   isPointOverRemoteControlStrip,
   clampRemoteControlWindowX,
+  resolveRemoteControlWindowPosition,
 } = require('./remoteControlWindowGeometry.cjs');
 const wallpaperWatchdogModule = require('./wallpaper/wallpaperWatchdog.cjs');
 const { requestWallpaperEntryConfirmation } = require('./wallpaper/wallpaperEntryRequest.cjs');
@@ -5372,6 +5374,19 @@ function ensureWallpaperLayerHeldByMainWindow() {
   }
 }
 
+// Where the remote control window last sat, read back safely. A position saved on a display that is
+// no longer there (monitor unplugged, resolution changed) falls back to the centred default: what is
+// drawn (the whole window, or only the card in use with the cover collapsed) has to fit inside one
+// display's work area, so it never opens off-screen or under the taskbar.
+function getRestoredRemoteControlWindowPosition() {
+  const saved = store.get(REMOTE_CONTROL_WINDOW_POSITION_SETTING_KEY);
+  return resolveRemoteControlWindowPosition(
+    saved,
+    screen.getAllDisplays().map(display => display.workArea),
+    remoteControlExpandCoverEnabled,
+  );
+}
+
 function createRemoteControlWindow() {
   if (remoteControlWindow && !remoteControlWindow.isDestroyed()) {
     remoteControlWindow.setTitle(REMOTE_CONTROL_WINDOW_TITLE);
@@ -5388,7 +5403,9 @@ function createRemoteControlWindow() {
   ensureWallpaperLayerHeldByMainWindow();
 
   // Never resized after this: the idle look and the card in use are both drawn in this size.
-  const position = getInitialRemoteControlWindowPosition(screen.getPrimaryDisplay().workArea);
+  const workArea = screen.getPrimaryDisplay().workArea;
+  const position = getRestoredRemoteControlWindowPosition()
+    ?? getInitialRemoteControlWindowPosition(workArea);
   const win = new BrowserWindow({
     modal: false,
     x: position.x,
@@ -5436,6 +5453,28 @@ function createRemoteControlWindow() {
   if (process.platform === 'win32') {
     win.on('will-move', (event, newBounds) => keepRemoteControlCoverOnScreen(win, event, newBounds));
   }
+  // Remember where the window last sat: after a drag, and again when it closes so an undragged
+  // window keeps the spot it opened on.
+  // macOS fires 'moved' on every frame of a drag and electron-store rewrites config.json
+  // synchronously on each set, so the save after a move waits until the window has settled, the
+  // same way the main window's state is saved; 'close' saves at once and drops the pending one.
+  let remoteControlPositionSaveTimer = null;
+  const clearRemoteControlPositionSaveTimer = () => {
+    clearTimeout(remoteControlPositionSaveTimer);
+    remoteControlPositionSaveTimer = null;
+  };
+  const persistRemoteControlPosition = () => {
+    clearRemoteControlPositionSaveTimer();
+    if (!win.isDestroyed()) {
+      const { x, y } = win.getBounds();
+      store.set(REMOTE_CONTROL_WINDOW_POSITION_SETTING_KEY, { x, y });
+    }
+  };
+  win.on('moved', () => {
+    clearRemoteControlPositionSaveTimer();
+    remoteControlPositionSaveTimer = setTimeout(persistRemoteControlPosition, WINDOW_STATE_SAVE_DEBOUNCE_MS);
+  });
+  win.on('close', persistRemoteControlPosition);
   applyRemoteControlAlwaysOnTop(win);
   syncRemoteControlMouseIgnore();
   loadAppEntry(win, { remote: '1' });
@@ -5450,6 +5489,7 @@ function createRemoteControlWindow() {
   });
 
   win.on('closed', () => {
+    clearRemoteControlPositionSaveTimer();
     if (remoteControlWindow === win) {
       remoteControlWindow = null;
       clearInterval(remoteControlPointerTimer);

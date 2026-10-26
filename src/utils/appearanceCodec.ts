@@ -414,15 +414,20 @@ const decompressSonnet = (o: any): any => ({
     postProcessLensDispersion: o.pplx !== undefined ? o.pplx : DEFAULT_SONNET_TUNING.postProcessLensDispersion,
 });
 
-// 智能动感模式 is one setting for every visualizer, not a Sonnet tuning, so it has its own key. Each
-// effect's setting is `[on ? 1 : 0, strength]`; a config from before effects had their own carries
-// the shared 轻拍 / 重拍 pair (`bi` / `dbi`), passed on for the store to fold (resolveSmartBeatSettings).
+// 智能动感模式 is one setting for every visualizer, not a Sonnet tuning, so it has its own key. Its
+// mode is `md` ('off' | 'cached' | 'on'); `on` is the one switch a build before the modes reads
+// (toStoredSmartBeat), and a config from such a build has only it. Each effect's setting is
+// `[on ? 1 : 0, strength]`; a config from before effects had their own carries the shared
+// 轻拍 / 重拍 pair (`bi` / `dbi`). Both legacy forms are passed on for the store to fold
+// (resolveSmartBeatSettings).
 const compressSmartBeat = (t: any): any => ({
-    on: t.enabled,
+    ...(t.mode !== undefined ? { md: t.mode } : {}),
+    on: t.enabled ?? t.mode === 'on',
     ef: Object.fromEntries(Object.entries(t.effects ?? {}).map(([id, e]: [string, any]) => [id, [e.on ? 1 : 0, e.strength]])),
 });
 const decompressSmartBeat = (o: any): any => ({
-    enabled: o.on !== undefined ? o.on : DEFAULT_SMART_BEAT_SETTINGS.enabled,
+    ...(o.md !== undefined ? { mode: o.md } : {}),
+    enabled: o.on !== undefined ? o.on : DEFAULT_SMART_BEAT_SETTINGS.mode === 'on',
     ...(o.ef && typeof o.ef === 'object'
         ? { effects: Object.fromEntries(Object.entries(o.ef).map(([id, e]: [string, any]) => [id, Array.isArray(e) ? { on: e[0] === 1, strength: e[1] } : e])) }
         : {}),
@@ -588,6 +593,7 @@ export const compressConfig = (config: any): string => {
     if (config.libraryWallSeamStyle !== undefined) minified.lwss = config.libraryWallSeamStyle;
     if (config.libraryWallBackdropLyrics !== undefined) minified.lwbl = config.libraryWallBackdropLyrics;
     if (config.libraryWallBackdropBlur !== undefined) minified.lwbb = config.libraryWallBackdropBlur;
+    if (config.libraryWallSeamDirection !== undefined) minified.lwsd = config.libraryWallSeamDirection;
 
     const jsonStr = JSON.stringify(minified);
     const bytes = new TextEncoder().encode(jsonStr);
@@ -657,7 +663,8 @@ export const decompressConfig = (str: string): any => {
         || parsed.lwsc !== undefined
         || parsed.lwss !== undefined
         || parsed.lwbl !== undefined
-        || parsed.lwbb !== undefined;
+        || parsed.lwbb !== undefined
+        || parsed.lwsd !== undefined;
     if (isMinified) {
         const decompressed: any = {};
         if (parsed.t) {
@@ -733,6 +740,7 @@ export const decompressConfig = (str: string): any => {
         if (parsed.lwss !== undefined) decompressed.libraryWallSeamStyle = parsed.lwss;
         if (parsed.lwbl !== undefined) decompressed.libraryWallBackdropLyrics = parsed.lwbl;
         if (parsed.lwbb !== undefined) decompressed.libraryWallBackdropBlur = parsed.lwbb;
+        if (parsed.lwsd !== undefined) decompressed.libraryWallSeamDirection = parsed.lwsd;
 
         return decompressed;
     } else {
@@ -755,6 +763,7 @@ export const decompressConfig = (str: string): any => {
             'stageTrackPillMode', 'stageTrackPillTimeoutSec', 'stageTrackPillOnHome', 'stageTrackPillPosition',
             'libraryWallStackEdges',
             'libraryWallSeamClear', 'libraryWallSeamStyle', 'libraryWallBackdropLyrics', 'libraryWallBackdropBlur',
+            'libraryWallSeamDirection',
         ];
         const hasValidKey = validKeys.some(k => parsed[k] !== undefined);
         if (!hasValidKey) {

@@ -20,6 +20,7 @@
     "dev:probe": "vite --open /dev-probe.html",
     "build": "npm run build:vercel-api && vite build",
     "build:vercel-api": "tsc -p api-ts/tsconfig.json",
+    "build:web": "vite build",
     "preview": "vite preview",
     "serve:web": "node server/static-server.mjs",
     "typecheck": "tsc --noEmit",

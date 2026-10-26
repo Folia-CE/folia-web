@@ -642,7 +642,7 @@ function readVersion() {
 
 if (!fs.existsSync(DIST)) {
   console.error(`[folia] 找不到构建产物：${DIST}`);
-  console.error('[folia] 先跑一次 npm run build:web');
+  console.error('[folia] 先跑一次构建：npm run build:web   然后 node server/static-server.mjs');
   process.exit(1);
 }
 

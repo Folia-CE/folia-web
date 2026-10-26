@@ -690,7 +690,7 @@ export function useThemeController({
                 return await applyCoverDerivedTheme(currentSong, shouldApply, 'fallback');
             }
 
-            const cachedTheme = await readCloudThemeFromLyrics(promptText);
+            const cachedTheme = await readCloudThemeFromLyrics({ lyricSource: promptText, isPureMusic, songTitle });
             if (!cachedTheme) {
                 // 云端没有这首 —— 这就是「最终结果」，不是错误。退回封面取色。
                 return await applyCoverDerivedTheme(currentSong, shouldApply, 'fallback');

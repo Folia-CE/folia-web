@@ -260,7 +260,7 @@ async function handleBridge(req, res) {
   const bridge = await loadBridge();
 
   if (req.method === 'GET') {
-    sendJson(res, 200, { ok: true, ready: true, providers: ['netease', 'qq', 'kugou', 'qq_raw'] });
+    sendJson(res, 200, { ok: true, ready: true, providers: ['netease', 'qq', 'kugou', 'bodian', 'qq_raw'] });
     return;
   }
 
@@ -313,12 +313,69 @@ const UPSTREAMS = {
   gtimg: 'https://y.gtimg.cn',
 };
 
+/**
+ * 平台 API 后端的本机回环地址。
+ *
+ * 这三家（网易云、酷狗、QQ）的网页版不是纯前端能做完的：扫完码还要拿票据去换会话，
+ * 那一步只能由后端代劳，页面自己算不出来。以前这一步由 docker 那套 gateway 反代到
+ * `netease-api` / `kugou-api` / `qq-api` 三个容器；换成这个静态服务器之后，那三个容器
+ * 就成了没人认识的后端 —— 于是「只有网易云能登录」，QQ 和酷狗扫完码报「后端不认这个会话」。
+ *
+ * 所以这里照旧把它们接回来：只走 127.0.0.1，容器端口由 compose.host-ports.yaml 绑在回环上，
+ * 公网永远访问不到。页面拿到的 base 是同源路径（见下方 PLATFORM_BACKEND_PREFIXES），
+ * 因此不需要任何 CORS 或者额外域名配置。
+ */
+const PLATFORM_BACKENDS = {
+  '/api/netease-backend': 'http://127.0.0.1:19001',
+  '/api/kugou-backend': 'http://127.0.0.1:19002',
+  '/api/qq-backend': 'http://127.0.0.1:19003',
+};
+
 /** 转发时不要带过去、或由代理自己决定的请求头。 */
 const HOP_BY_HOP = new Set([
   'host', 'connection', 'content-length', 'accept-encoding', 'origin', 'referer',
   'sec-fetch-dest', 'sec-fetch-mode', 'sec-fetch-site', 'sec-ch-ua', 'sec-ch-ua-mobile',
   'sec-ch-ua-platform',
 ]);
+
+/**
+ * 把请求原样转给平台的 API 后端（只走本机回环）。
+ *
+ * 只做搬运：路径、查询串、方法、请求体都不改。会话由页面自己存，这里不落盘。
+ * 音频仍然一律不经过这台服务器 —— 后端要是回了 `audio/*`，就地掐断，理由同下面那段。
+ */
+async function handlePlatformBackend(req, res, url, prefix, base) {
+  const suffix = url.pathname.slice(prefix.length) || '/';
+  const target = `${base}${suffix.startsWith('/') ? '' : '/'}${suffix}${url.search}`;
+
+  const headers = new Headers();
+  for (const [name, value] of Object.entries(req.headers)) {
+    if (value === undefined) continue;
+    if (HOP_BY_HOP.has(name.toLowerCase())) continue;
+    headers.set(name, Array.isArray(value) ? value.join(', ') : String(value));
+  }
+
+  const method = (req.method || 'GET').toUpperCase();
+  const body = method === 'GET' || method === 'HEAD' ? undefined : Readable.toWeb(req);
+
+  const upstream = await fetch(target, { method, headers, body, redirect: 'manual', duplex: 'half' });
+
+  const contentType = upstream.headers.get('content-type') || '';
+  if (isForbiddenPayload(contentType)) {
+    sendJson(res, 502, { error: 'This server does not relay audio or video bytes' });
+    return;
+  }
+
+  res.statusCode = upstream.status;
+  upstream.headers.forEach((value, name) => {
+    if (!HOP_BY_HOP.has(name.toLowerCase())) res.setHeader(name, value);
+  });
+  if (!upstream.body) {
+    res.end();
+    return;
+  }
+  Readable.fromWeb(upstream.body).pipe(res);
+}
 
 /**
  * ⚠️ 不许经过这个服务的字节：音频 / 视频 / 大文件。
@@ -725,6 +782,20 @@ const server = http.createServer((req, res) => {
   if (url.pathname === '/__health') {
     sendJson(res, 200, { ok: true, version: readVersion() });
     return;
+  }
+
+  // 平台 API 后端：/api/<平台>-backend/... 原样转给本机回环上的容器。
+  for (const [prefix, base] of Object.entries(PLATFORM_BACKENDS)) {
+    if (url.pathname === prefix || url.pathname.startsWith(`${prefix}/`)) {
+      handlePlatformBackend(req, res, url, prefix, base).catch((error) => {
+        if (!res.headersSent) {
+          sendJson(res, 502, { error: 'Platform backend unreachable', details: error instanceof Error ? error.message : String(error) });
+        } else {
+          res.end();
+        }
+      });
+      return;
+    }
   }
 
   // 「本地登录」的真正入口：页面把一家平台的请求交给这里，由内置的接口代码在服务端跑。

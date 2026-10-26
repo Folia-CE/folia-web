@@ -125,7 +125,7 @@ export function useSongThemeAutoGeneration({
 
             let theme: DualTheme | null = null;
             try {
-                theme = await readCloudThemeFromLyrics(promptText);
+                theme = await readCloudThemeFromLyrics({ lyricSource: promptText, isPureMusic, songTitle });
             } catch {
                 theme = null;
             }

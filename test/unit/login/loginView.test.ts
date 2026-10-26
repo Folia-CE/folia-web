@@ -48,9 +48,11 @@ describe('the platform column', () => {
         expect(orderRows(rows, 'e').map(entry => entry.providerId)).toEqual(['e', 'c', 'b', 'a', 'd', 'f', 'g']);
     });
 
-    it('leaves out a platform this runtime cannot use at all, and keeps one that is only not configured', () => {
+    // 够不着的平台照样列出来，只是置灰：整行过滤掉会让人以为这个版本压根没接。
+    it('lists a platform this runtime cannot use at all, next to one that is only not configured', () => {
         const rows = [row('a'), row('b', { availability: { configured: false, reason: 'runtime-unavailable' } }), row('c', off)];
-        expect(orderRows(rows, 'b').map(entry => entry.providerId)).toEqual(['a', 'c']);
+        expect(orderRows(rows, 'b').map(entry => entry.providerId)).toEqual(['b', 'a', 'c']);
+        expect(rowStatus(row('b', { availability: { configured: false, reason: 'runtime-unavailable' } }))).toBe('off');
     });
 
     it('filters by a piece of the short or the long name, whatever the case', () => {
@@ -69,7 +71,7 @@ describe('the switcher pill and an account\'s picture', () => {
         const rows = [row('a', unusable), row('b'), row('c', off)];
         expect(pillProvider(rows, 'b')?.providerId).toBe('b');
         expect(pillProvider(rows, 'a')?.providerId).toBe('b');
-        expect(pillProvider([row('a', unusable)], 'a')).toBeNull();
+        expect(pillProvider([row('a', unusable)], 'a')?.providerId).toBe('a');
     });
 
     // A click on the pill opens the window on the platform it shows, and a row that is out of

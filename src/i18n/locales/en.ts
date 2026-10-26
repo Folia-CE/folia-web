@@ -1503,6 +1503,7 @@ export default {
     "confirmOnlineProviderSwitch": "Switch to {{provider}}? Current online playback and queue will be cleared.",
     "onlineProvider": "Online music provider",
     "providerNotConfigured": "API is not configured for Web",
+    "providerDesktopOnly": "Desktop app only",
     "providerNoAccount": "No sign-in needed",
     "qrScanned": "Scanned! Confirm on your phone.",
     "loginSuccess": "Login Successful!",

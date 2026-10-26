@@ -1503,6 +1503,7 @@ export default {
     "confirmOnlineProviderSwitch": "切换到 {{provider}}？当前在线播放与队列将被清空。",
     "onlineProvider": "在线音乐平台",
     "providerNotConfigured": "Web 端未配置 API",
+    "providerDesktopOnly": "仅桌面端可用",
     "providerNoAccount": "无需登录",
     "qrScanned": "扫描成功！请在手机上确认。",
     "loginSuccess": "登录成功！",

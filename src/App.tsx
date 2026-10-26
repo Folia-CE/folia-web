@@ -97,7 +97,7 @@ import { useElectronVideoExportController } from './hooks/useElectronVideoExport
 import { useElectronWindowPlaybackHandoff } from './components/app/playback/restore/useElectronWindowPlaybackHandoff';
 import { useMediaSessionBridge } from './hooks/useMediaSessionBridge';
 import { usePlayerChromeAutoHide } from './hooks/usePlayerChromeAutoHide';
-import { usePlayerTouchGestures } from './hooks/usePlayerTouchGestures';
+import { usePlayerSurfaceGestures } from './hooks/usePlayerSurfaceGestures';
 import { useMacWallpaperHitRegions } from './hooks/useMacWallpaperHitRegions';
 import { useIdleCursorHide } from './hooks/useIdleCursorHide';
 import { usePlaybackAudioBridge } from './components/app/playback/bridges/usePlaybackAudioBridge';
@@ -1105,25 +1105,6 @@ export default function App() {
         onClearPendingUnavailableSkip: clearPendingUnavailableSkip,
     });
 
-    /**
-     * 触摸屏上的三个手势：空闲收起界面、点空白处收起/放回、左右滑动切歌。
-     *
-     * 上面那层 usePlayerChromeAutoHide 只听鼠标事件，手机上一条都不会来 ——
-     * 触屏上「自动收起」和「点空白隐藏」原本等于不存在。这两件事都落回同一个
-     * isPlayerChromeHidden，所以桌面那套「始终显示 / 自动收起 / 始终隐藏」三档在手机上照样成立。
-     *
-     * 位置在 handleNextTrack / handlePrevTrack 之后：它们是 const 解构出来的，
-     * 在这之前读会撞上 TDZ（运行时直接抛 ReferenceError，类型检查发现不了）。
-     */
-    usePlayerTouchGestures({
-        isChromeHidden: isPlayerChromeHidden,
-        onToggleChrome: () => setIsPlayerChromeHidden(previous => !previous),
-        onSwipeLeft: () => void handleNextTrack(),
-        onSwipeRight: () => void handlePrevTrack(),
-        // 「始终显示」时不接管：用户明确说了别收，那就别收。
-        enabled: playerChromeVisibilityMode !== 'always-visible',
-    });
-
     // Bridges the automix hook (built here) to the media-cache writer (built a little further down in
     // usePlaybackAudioBridge). A ref rather than a prop because the writer does not exist yet at this
     // call - the same ordering the harvest/advance callbacks inside the hook solve the same way.
@@ -1546,6 +1527,32 @@ export default function App() {
         pausePlayback,
         resumePlayback,
         syncStageLyricsClock,
+    });
+
+    /**
+     * 播放页可视层上的手势：左右滑动切歌、单击翻转控件显隐、双击暂停 / 继续。
+     *
+     * 挂在最底下那层可视化背景上（下面 data-testid="player-visual-surface" 那个 div）：播放条、
+     * 按钮、歌词轨都是它的兄弟节点或自带手势，所以拖进度条、滚歌词不会误触；反过来在歌词区域上
+     * 划，事件会冒泡上来，一样算数。判定（阈值 / 横纵比 / 双击窗口）在 utils/ 里，能脱开 DOM 单测。
+     *
+     * 「始终显示」那一档单击不接管：用户明确说了别收，那就别收（双击暂停照旧）。
+     *
+     * 位置必须在 togglePlay / handleContainerClick 之后：它们是上面 usePlaybackInteractionBridge
+     * 解构出来的 const，同样在 handleNextTrack / handlePrevTrack 之后 —— 在这之前读会撞上 TDZ
+     * （运行时直接抛 ReferenceError，类型检查发现不了）。
+     */
+    const playerSurfaceGestures = usePlayerSurfaceGestures({
+        isPlayerPage: currentView === 'player',
+        isPanelOpen,
+        // `auto-hide` 那一档的显隐归空闲时钟管：它每次 pointerdown 会先把控件显出来，
+        // 于是这里延迟执行的翻转只会一路藏下去，「再点一下恢复」就永远不成立。
+        canToggleChrome: playerChromeVisibilityMode !== 'always-visible' && playerChromeVisibilityMode !== 'auto-hide',
+        setIsPlayerChromeHidden,
+        onClosePanel: handleContainerClick,
+        onTogglePlayback: togglePlay,
+        onNext: () => { void handleNextTrack(); },
+        onPrev: handlePrevTrack,
     });
 
     const { personalFmSelection, personalFmSelectionLabel, isPersonalFmModeSupported, setPersonalFmSelection } = usePersonalFmModeController({
@@ -2836,7 +2843,13 @@ export default function App() {
                 data-testid="player-visual-surface"
                 data-library-backdrop-blur={blursVisualizerBackdrop || undefined}
                 style={visualizerBackdropStyle(blursVisualizerBackdrop)}
-                onClick={handleContainerClick}
+                // 单击 / 双击 / 左右滑动都挂在这一层上（见上面 playerSurfaceGestures 的注释）：
+                // 滑动切完歌补发的那个 click 由 onClick 里的 consumeSuppressedClick 吃掉。
+                onClick={playerSurfaceGestures.onClick}
+                onPointerDown={playerSurfaceGestures.onPointerDown}
+                onPointerMove={playerSurfaceGestures.onPointerMove}
+                onPointerUp={playerSurfaceGestures.onPointerUp}
+                onPointerCancel={playerSurfaceGestures.onPointerCancel}
             >
                 <PlayerBottomBarLayoutContext.Provider value={currentView === 'player'}>
                     {shouldMountVisualizer && <VisualizerRenderer {...visualizerRendererModel} animateStyleSwitch />}

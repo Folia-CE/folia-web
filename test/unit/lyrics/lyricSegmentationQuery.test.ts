@@ -12,8 +12,6 @@ import { SEGMENTATION_DELIMITER } from '../../../src/utils/lyrics/lyricSegmentat
 
 describe('parseLyricSegmentationQuery', () => {
     it.each([
-        ['--ai', 'ai'],
-        ['--segment', 'ai'],
         ['--copy-prompt', 'copy-prompt'],
         ['--prompt', 'copy-prompt'],
         ['--copy-seg', 'copy-seg'],
@@ -36,7 +34,7 @@ describe('parseLyricSegmentationQuery', () => {
 
     it('declares every flag it resolves', () => {
         const names = LYRIC_SEGMENTATION_SYNTAX_SPEC.flags.map(flag => flag.name);
-        expect(names).toEqual(['ai', 'copy-seg', 'copy-prompt']);
+        expect(names).toEqual(['copy-seg', 'copy-prompt']);
         expect(LYRIC_SEGMENTATION_SYNTAX_SPEC.facets).toEqual([]);
     });
 });

@@ -97,6 +97,7 @@ import { useElectronVideoExportController } from './hooks/useElectronVideoExport
 import { useElectronWindowPlaybackHandoff } from './components/app/playback/restore/useElectronWindowPlaybackHandoff';
 import { useMediaSessionBridge } from './hooks/useMediaSessionBridge';
 import { usePlayerChromeAutoHide } from './hooks/usePlayerChromeAutoHide';
+import { usePlayerTouchGestures } from './hooks/usePlayerTouchGestures';
 import { useMacWallpaperHitRegions } from './hooks/useMacWallpaperHitRegions';
 import { useIdleCursorHide } from './hooks/useIdleCursorHide';
 import { usePlaybackAudioBridge } from './components/app/playback/bridges/usePlaybackAudioBridge';
@@ -1102,6 +1103,25 @@ export default function App() {
         blobUrlRef,
         volumePreviewFrameRef,
         onClearPendingUnavailableSkip: clearPendingUnavailableSkip,
+    });
+
+    /**
+     * 触摸屏上的三个手势：空闲收起界面、点空白处收起/放回、左右滑动切歌。
+     *
+     * 上面那层 usePlayerChromeAutoHide 只听鼠标事件，手机上一条都不会来 ——
+     * 触屏上「自动收起」和「点空白隐藏」原本等于不存在。这两件事都落回同一个
+     * isPlayerChromeHidden，所以桌面那套「始终显示 / 自动收起 / 始终隐藏」三档在手机上照样成立。
+     *
+     * 位置在 handleNextTrack / handlePrevTrack 之后：它们是 const 解构出来的，
+     * 在这之前读会撞上 TDZ（运行时直接抛 ReferenceError，类型检查发现不了）。
+     */
+    usePlayerTouchGestures({
+        isChromeHidden: isPlayerChromeHidden,
+        onToggleChrome: () => setIsPlayerChromeHidden(previous => !previous),
+        onSwipeLeft: () => void handleNextTrack(),
+        onSwipeRight: () => void handlePrevTrack(),
+        // 「始终显示」时不接管：用户明确说了别收，那就别收。
+        enabled: playerChromeVisibilityMode !== 'always-visible',
     });
 
     // Bridges the automix hook (built here) to the media-cache writer (built a little further down in

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Copy, FileText, Loader2, RotateCcw, Sparkles } from 'lucide-react';
+import { Copy, FileText, RotateCcw } from 'lucide-react';
 import type { LyricSegmentationAction } from '../lyricSegmentationQuery';
 
 // src/components/command-palette/surfaces/LyricSegmentationActionBar.tsx
@@ -18,16 +18,10 @@ type LyricSegmentationActionBarProps = {
     isDaylight: boolean;
     t: (key: string, fallback?: string) => string;
     statusText: string;
-    isAiAvailable: boolean;
-    isRunningAi: boolean;
-    /** Replaces the AI button's label while a run is in flight; also acts as the cancel affordance. */
-    aiRunningLabel: string;
     isImporting: boolean;
     hasRecord: boolean;
     /** Flag being typed in the palette input; its button is highlighted so the two line up. */
     pendingAction: LyricSegmentationAction | null;
-    onRunAi: () => void;
-    onCancelAi: () => void;
     onCopyPrompt: () => void;
     onCopyCurrent: () => void;
     onReset: () => void;
@@ -64,41 +58,18 @@ const LyricSegmentationActionBar: React.FC<LyricSegmentationActionBarProps> = ({
     isDaylight,
     t,
     statusText,
-    isAiAvailable,
-    isRunningAi,
-    aiRunningLabel,
     isImporting,
     hasRecord,
     pendingAction,
-    onRunAi,
-    onCancelAi,
     onCopyPrompt,
     onCopyCurrent,
     onReset,
 }) => {
-    const busy = isRunningAi || isImporting;
+    const busy = isImporting;
 
     return (
         <div className="flex shrink-0 items-center gap-1.5">
             <span className="mr-auto truncate text-[11px] font-semibold opacity-70">{statusText}</span>
-
-            {isAiAvailable && (
-                <button
-                    type="button"
-                    // While running this is the cancel affordance: a long generation with no way
-                    // out but closing the palette is how it first read as a hang.
-                    onClick={isRunningAi ? onCancelAi : onRunAi}
-                    disabled={isImporting}
-                    className={`flex h-7 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-30 ${
-                        pendingAction === 'ai'
-                            ? (isDaylight ? 'bg-black/[0.12]' : 'bg-white/[0.20]')
-                            : (isDaylight ? 'bg-black/[0.06] hover:bg-black/[0.10]' : 'bg-white/[0.10] hover:bg-white/[0.16]')
-                    }`}
-                >
-                    {isRunningAi ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
-                    {isRunningAi ? aiRunningLabel : t('lyricSegmentation.runAi', 'Segment with AI')}
-                </button>
-            )}
 
             <IconButton isDaylight={isDaylight} disabled={busy} onClick={onCopyPrompt}
                 active={pendingAction === 'copy-prompt'}
@@ -119,3 +90,4 @@ const LyricSegmentationActionBar: React.FC<LyricSegmentationActionBarProps> = ({
 };
 
 export default LyricSegmentationActionBar;
+

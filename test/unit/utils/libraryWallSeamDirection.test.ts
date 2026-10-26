@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     DEFAULT_LIBRARY_WALL_SEAM_DIRECTION,
+    DEFAULT_LIBRARY_WALL_SEAM_FLIP,
     LIBRARY_WALL_PORTRAIT_QUERY,
     LIBRARY_WALL_SEAM_DIRECTIONS,
     isLibraryWallSeamDirection,
@@ -30,10 +31,25 @@ describe('libraryWallSeamDirection', () => {
     });
 
     it('opens rows on portrait screens only when automatic, and follows a fixed choice otherwise', () => {
-        expect(resolveLibraryWallSeamHorizontal('auto', true)).toBe(true);
-        expect(resolveLibraryWallSeamHorizontal('auto', false)).toBe(false);
-        expect(resolveLibraryWallSeamHorizontal('horizontal', false)).toBe(true);
-        expect(resolveLibraryWallSeamHorizontal('vertical', true)).toBe(false);
+        // 不传 flip 时用默认值（开）：解析出来的横竖整个倒过来。
+        expect(resolveLibraryWallSeamHorizontal('auto', true)).toBe(false);
+        expect(resolveLibraryWallSeamHorizontal('auto', false)).toBe(true);
+        expect(resolveLibraryWallSeamHorizontal('horizontal', false)).toBe(false);
+        expect(resolveLibraryWallSeamHorizontal('vertical', true)).toBe(true);
+    });
+
+    it('reads the direction literally when the flip is turned off', () => {
+        expect(resolveLibraryWallSeamHorizontal('auto', true, false)).toBe(true);
+        expect(resolveLibraryWallSeamHorizontal('auto', false, false)).toBe(false);
+        expect(resolveLibraryWallSeamHorizontal('horizontal', false, false)).toBe(true);
+        expect(resolveLibraryWallSeamHorizontal('vertical', true, false)).toBe(false);
+    });
+
+    it('defaults the flip to on, so the two readings differ unless it is passed', () => {
+        expect(DEFAULT_LIBRARY_WALL_SEAM_FLIP).toBe(true);
+        expect(resolveLibraryWallSeamHorizontal('vertical', false)).toBe(
+            resolveLibraryWallSeamHorizontal('vertical', false, DEFAULT_LIBRARY_WALL_SEAM_FLIP),
+        );
     });
 
     it('counts only clearly tall viewports as portrait, so near-square windows do not flip back and forth', () => {

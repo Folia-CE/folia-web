@@ -27,10 +27,29 @@ export const LIBRARY_WALL_SEAM_DIRECTION_TEXT: Readonly<Record<LibraryWallSeamDi
     horizontal: { label: 'options.bravaisSeamDirectionHorizontal', description: 'options.bravaisSeamDirectionHorizontalDesc' },
 });
 
+/**
+ * 信息条方向反向：默认**开**。
+ *
+ * 方向这一项有三种取值，但它们只说了「从哪种缝里裂开」，没说清楚**相对谁**。
+ * 同一台机器上，竖缝读起来到底是「墙左右分开」还是「墙上下分开」，取决于你看这面墙的方式——
+ * 所以给方向下面一个一次说清楚的开关，把解析出来的横竖整个倒过来：
+ *
+ *   · 关着（不反向）= 按字面来：竖向就竖着裂，自动时竖着的屏幕用横条；
+ *   · 开着 = 反过来：竖向变横着裂，自动时竖着的屏幕改用竖缝。
+ *
+ * 默认开是定下来的（与「信息条始终透明」同一档处理）：它是这个开关有意义的那个起点。
+ */
+export const DEFAULT_LIBRARY_WALL_SEAM_FLIP = true;
+
 /** 「竖着的屏幕」：高 ≥ 宽 × 1.1（宽高比 ≤ 10 / 11）。 */
 export const LIBRARY_WALL_PORTRAIT_QUERY = '(max-aspect-ratio: 10/11)';
 
-/** 此刻信息条该不该横着开：自动时看屏幕是不是竖着的。 */
-export const resolveLibraryWallSeamHorizontal = (direction: LibraryWallSeamDirection, portrait: boolean): boolean => (
-    direction === 'auto' ? portrait : direction === 'horizontal'
-);
+/** 此刻信息条该不该横着开：自动时看屏幕是不是竖着的，再按 `flip` 整个倒过来。 */
+export const resolveLibraryWallSeamHorizontal = (
+    direction: LibraryWallSeamDirection,
+    portrait: boolean,
+    flip: boolean = DEFAULT_LIBRARY_WALL_SEAM_FLIP,
+): boolean => {
+    const horizontal = direction === 'auto' ? portrait : direction === 'horizontal';
+    return flip ? !horizontal : horizontal;
+};

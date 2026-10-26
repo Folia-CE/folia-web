@@ -4692,6 +4692,9 @@ export async function handleKGLoginQrCheck(key) {
     message: '登录成功',
     userId,
     token,
+    // 页面侧只认这个字段（kugouTransport 的 persistWebSession 把它写进 localStorage）。
+    // 只给 token/userId 的话，登录态在桥那边有、在页面这边没有 —— 换个歌单就又要重新扫码。
+    cookie: cookieHeader || '',
     hasAppToken: true,
     hasVipToken: !!resolveKGEffectiveVipToken(cookieHeader, await loadKGVipSessionCache(userId)),
     ...info,

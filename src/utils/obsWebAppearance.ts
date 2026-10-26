@@ -5,8 +5,6 @@ import type { VisualizerBackgroundConfig } from '../components/visualizer/backgr
 // 所以短码里的模式只可能是内建的。
 import { DEFAULT_VISUALIZER_MODE, isBuiltinVisualizerMode } from '../types/visualizerModes';
 import { decompressConfig } from './appearanceCodec';
-import type { ObsAiConfig } from '../services/aiText';
-import { getWebAiProvider } from '../services/runtimeConfig';
 
 // src/utils/obsWebAppearance.ts
 // Parse the OBS URL params (including the appearance cfg shortcode) into the appearance
@@ -83,15 +81,6 @@ export function parseObsWebParams(search: string): ObsWebParams {
   };
 }
 
-// Dynamic AI overlay params: returns the AI connection under obsTheme=ai, else null. The overlay is
-// keyless — the provider comes from Docker runtime config or the Vite build fallback
-// key — so the URL carries only the mode marker, no AI secrets.
-export function parseObsAiParams(search: string): ObsAiConfig | null {
-  const params = new URLSearchParams(search);
-  if (readObsThemeMode(params) !== 'ai') return null;
-  const provider = getWebAiProvider();
-  return { provider };
-}
 
 interface BuildAppearanceOptions {
   isDaylight: boolean;
@@ -184,3 +173,5 @@ export function buildObsAppearanceFromShortcode(
     background,
   };
 }
+
+

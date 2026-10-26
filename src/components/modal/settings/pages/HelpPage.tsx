@@ -33,6 +33,8 @@ const VERSION_INFO = (__DOCKER_STACK_VERSION__
 
 const SHORTCUTS: SettingsGroupDef = { id: 'helpShortcuts', titleKey: 'help.keyboardShortcuts' };
 const PLAYER_KEYS: SettingsGroupDef = { id: 'helpPlayerControls', titleKey: 'help.playerControls' };
+// 只留这一行群号：原来那一整组（文档 / Discord / 配置 AI 的入口）随 AI 功能一起去掉了，
+// 标题借用「遇到问题？」—— 这一行现在就是「找不到答案时去哪问」。
 const SUPPORT: SettingsGroupDef = { id: 'helpSupport', titleKey: 'aiHelp.title' };
 const ABOUT: SettingsGroupDef = { id: 'helpAbout', titleKey: 'help.version' };
 
@@ -92,12 +94,11 @@ const KeyRow: React.FC<KeyRowProps> = ({ label, withPrimaryModifier, keys }) => 
 type HelpPageProps = {
     onOpenReleaseNotes: () => void;
     /** Opens the 遇到问题？ dialog. */
-    onOpenAiHelp: () => void;
     /** A click on the "Project:" label; the settings window counts them. */
     onProjectLabelClick: () => void;
 };
 
-const HelpPage: React.FC<HelpPageProps> = ({ onOpenReleaseNotes, onOpenAiHelp, onProjectLabelClick }) => {
+const HelpPage: React.FC<HelpPageProps> = ({ onOpenReleaseNotes, onProjectLabelClick }) => {
     const { t } = useTranslation();
 
     return (
@@ -144,7 +145,6 @@ const HelpPage: React.FC<HelpPageProps> = ({ onOpenReleaseNotes, onOpenAiHelp, o
             </div>
 
             <Group def={SUPPORT} bare>
-                <Row label={iconLabel(CircleHelp, t('aiHelp.openButton'))} onClick={onOpenAiHelp} />
                 {/* A QQ group has no link that opens it: the row gives its number to copy. */}
                 <Row label={iconLabel(Users, t('help.communityQq'))}>
                     <CopyValue value={QQ_COMMUNITY_GROUP_NUMBER} />
@@ -197,3 +197,5 @@ const HelpPage: React.FC<HelpPageProps> = ({ onOpenReleaseNotes, onOpenAiHelp, o
 };
 
 export default HelpPage;
+
+

@@ -410,7 +410,6 @@ export type CommandPaletteSettingsContext = {
 export type CommandPaletteLyricSegmentationContext = {
     record: LyricSegmentationRecord | null;
     /** True when this build can reach a model at all; false hides the AI action. */
-    isAiAvailable: boolean;
     save: (lines: Record<string, string[]>, source: LyricSegmentationSource) => Promise<void>;
     reset: () => Promise<void>;
 };

@@ -71,7 +71,6 @@ const LyricSegmentationSurfaceProbe: React.FC<{ lyricDelayMs?: number }> = ({ ly
                     lyrics={lyrics}
                     setStatusMsg={() => {}}
                     record={record}
-                    isAiAvailable
                     onSave={async (lines, source) => {
                         setRecord(createLyricSegmentationRecord('local:probe', source, lines));
                         setSavedCount(count => count + 1);

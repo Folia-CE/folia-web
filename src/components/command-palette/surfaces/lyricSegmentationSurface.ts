@@ -20,7 +20,6 @@ import type { CommandPaletteSurface, CommandSurfaceArgs, CommandSurfaceRenderArg
  * and a late teardown from a handle that has already been replaced must not clear the new one.
  */
 export type LyricSegmentationHandle = {
-    runAi: () => void;
     copyPrompt: () => void;
     copySegmentation: () => void;
     importText: (text: string) => void;
@@ -38,10 +37,9 @@ export const registerLyricSegmentationHandle = (handle: LyricSegmentationHandle)
 };
 
 /** Only the argument-less actions; importing arrives by paste, not by flag. */
-type FlagAction = 'runAi' | 'copyPrompt' | 'copySegmentation';
+type FlagAction = 'copyPrompt' | 'copySegmentation';
 
 const ACTIONS: Record<LyricSegmentationAction, FlagAction> = {
-    ai: 'runAi',
     'copy-prompt': 'copyPrompt',
     'copy-seg': 'copySegmentation',
 };
@@ -68,7 +66,6 @@ const buildViewProps = ({ context, query, isDaylight, theme, close }: CommandSur
     lyrics: context.shared.lyrics,
     setStatusMsg: context.shared.setStatusMsg,
     record: context.visualizer.lyricSegmentation.record,
-    isAiAvailable: context.visualizer.lyricSegmentation.isAiAvailable,
     onSave: context.visualizer.lyricSegmentation.save,
     onReset: context.visualizer.lyricSegmentation.reset,
     // Lets the surface highlight the action the half-typed flag is heading towards.
@@ -101,3 +98,4 @@ export const lyricSegmentationSurface: CommandPaletteSurface = {
         },
     }),
 };
+

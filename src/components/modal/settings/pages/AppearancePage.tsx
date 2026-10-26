@@ -8,7 +8,6 @@ import { useThemeSettingsStore } from '../../../../stores/useThemeSettingsStore'
 import { useVisualizerSettingsStore } from '../../../../stores/useVisualizerSettingsStore';
 import { Button, Group, Reveal, Row, Segmented, Toggle, Value, option, type SettingsGroupDef, type SettingsOptionDef } from '../kit';
 import { settingsAnchorSubview } from '../navigation/settingsAnchorModel';
-import AiProviderSettings, { AI_SETTINGS_OPTIONS } from './ai/AiProviderSettings';
 import CloudCacheSettings from './ai/CloudCacheSettings';
 import { CLOUD_CACHE_OPTIONS, isCloudCacheSettingsVisible } from './ai/cloudCacheOptions';
 import { useSettingsPage } from './settingsPageContext';
@@ -35,7 +34,7 @@ const O = {
 
 };
 
-export const OPTIONS: SettingsOptionDef[] = [...Object.values(O), ...AI_SETTINGS_OPTIONS, ...CLOUD_CACHE_OPTIONS];
+export const OPTIONS: SettingsOptionDef[] = [...Object.values(O), ...CLOUD_CACHE_OPTIONS];
 
 type DaylightChoice = 'light' | 'dark' | 'system';
 
@@ -108,24 +107,19 @@ const AppearancePage: React.FC = () => {
                 </Reveal>
                 <Row
                     option={O.source}
-                    note={t(themeControls.themeGenerationSource === 'cover' ? 'options.themeGenerationSourceCoverDesc' : 'options.themeGenerationSourceAiDesc')}
+                    note={t(themeControls.themeGenerationSource === 'cover' ? 'options.themeGenerationSourceCoverDesc' : 'options.themeGenerationSourceCloudDesc')}
                 >
+                    {/* `ai` 这个取值留着了（存储与导出格式里就是它），但现在说的是「云端缓存」：
+                        生成那条路已经删掉，主题只从公共云缓存里取别人算过的结果。 */}
                     <Segmented
                         value={themeControls.themeGenerationSource}
                         options={[
-                            { value: 'ai', label: t('options.themeGenerationSourceAi'), disabled: themeControls.aiApiKeyStatus !== 'configured' },
+                            { value: 'ai', label: t('options.themeGenerationSourceCloud') },
                             { value: 'cover', label: t('options.themeGenerationSourceCover') },
                         ]}
                         onChange={themeControls.onChangeThemeGenerationSource}
                     />
                 </Row>
-                <Reveal when={themeControls.aiApiKeyStatus === 'missing'}>
-                    <Row sub notice={t('options.themeGenerationSourceAiUnavailable')}>
-                        <Button onClick={() => openSettings('options', settingsAnchorSubview('electronSettings'), null, 'electronSettings')}>
-                            {t('options.configureAiApiKey')}
-                        </Button>
-                    </Row>
-                </Reveal>
                 <Row option={O.preferCustom} hint={t('options.preferCustomThemeDesc')}>
                     <Toggle
                         checked={themeControls.isCustomThemePreferred}
@@ -135,7 +129,6 @@ const AppearancePage: React.FC = () => {
                 </Row>
             </Group>
 
-            {isElectron && <AiProviderSettings />}
             {/* 云缓存：只有网页版画。桌面端主题由主进程生成，这层浏览器缓存用不上。 */}
             {isCloudCacheSettingsVisible() && <CloudCacheSettings />}
         </>

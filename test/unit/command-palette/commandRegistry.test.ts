@@ -206,7 +206,6 @@ const createContext = (overrides: CommandPaletteContextOverrides = {}): CommandP
             usesWordSegmentation: true,
             lyricSegmentation: {
                 record: null,
-                isAiAvailable: true,
                 save: vi.fn(async () => {}),
                 reset: vi.fn(async () => {}),
             },

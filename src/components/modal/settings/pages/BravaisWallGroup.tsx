@@ -36,6 +36,7 @@ const O = {
     windows: option(BRAVAIS_WALL, 'libraryWallWindows', 'options.libraryWallWindows'),
     stackEdges: option(BRAVAIS_WALL, 'bravaisStackEdges', 'options.bravaisStackEdges'),
     seamDirection: option(BRAVAIS_WALL, 'bravaisSeamDirection', 'options.bravaisSeamDirection'),
+    seamFlip: option(BRAVAIS_WALL, 'bravaisSeamFlip', 'options.bravaisSeamFlip'),
     seamClear: option(BRAVAIS_WALL, 'bravaisSeamClear', 'options.bravaisSeamClear'),
     seamStyle: option(BRAVAIS_WALL, 'bravaisSeamStyle', 'options.bravaisSeamStyle'),
     backdropLyrics: option(BRAVAIS_WALL, 'bravaisBackdropLyrics', 'options.bravaisBackdropLyrics'),
@@ -75,6 +76,7 @@ export const BravaisWallGroup: React.FC = () => {
         backdropLyrics: state.backdropLyrics,
         backdropBlur: state.backdropBlur,
         seamDirection: state.seamDirection,
+        seamFlip: state.seamFlip,
         setLook: state.setLook,
         setWindowsPerBlock: state.setWindowsPerBlock,
         setStackEdges: state.setCollectionStackEdges,
@@ -83,6 +85,7 @@ export const BravaisWallGroup: React.FC = () => {
         setBackdropLyrics: state.setBackdropLyrics,
         setBackdropBlur: state.setBackdropBlur,
         setSeamDirection: state.setSeamDirection,
+        setSeamFlip: state.setSeamFlip,
     })));
 
     if (!isBravaisActive) return null;
@@ -122,6 +125,10 @@ export const BravaisWallGroup: React.FC = () => {
                     options={LIBRARY_WALL_SEAM_DIRECTIONS.map(direction => ({ value: direction, label: t(LIBRARY_WALL_SEAM_DIRECTION_TEXT[direction].label) }))}
                     onChange={wall.setSeamDirection}
                 />
+            </Row>
+            {/* 方向只说了从哪种缝里裂开，没说相对谁：这一行把解析出来的横竖倒过来。默认开。 */}
+            <Row sub option={O.seamFlip} note={t('options.bravaisSeamFlipDesc')}>
+                <Toggle checked={wall.seamFlip} onChange={wall.setSeamFlip} />
             </Row>
             <Row option={O.seamClear} note={t('options.bravaisSeamClearDesc')}>
                 <Toggle checked={wall.seamClear} onChange={wall.setSeamClear} />

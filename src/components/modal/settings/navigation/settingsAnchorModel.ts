@@ -12,7 +12,6 @@ export const SETTINGS_ANCHOR_DEFINITIONS = {
     // pages/AppearancePage
     lyricsRenderer: { section: 'appearance' },
     themePresets: { section: 'appearance' },
-    electronSettings: { section: 'appearance' },
 
     // pages/PlayerPage
     playbackEntryView: { section: 'player' },

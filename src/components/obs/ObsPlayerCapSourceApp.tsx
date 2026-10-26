@@ -2,7 +2,7 @@ import React, { useMemo, useRef } from 'react';
 import ObsWebSourceApp from './ObsWebSourceApp';
 import { usePlayerCapSource } from '../../hooks/usePlayerCapSource';
 import { playerCapToWebLyricSource } from '../../utils/playerCapWebSource';
-import { buildObsAppearanceFromShortcode, parseObsAiParams, parseObsWebParams } from '../../utils/obsWebAppearance';
+import { buildObsAppearanceFromShortcode, parseObsWebParams } from '../../utils/obsWebAppearance';
 import type { PlayerCapTimeBasis } from '../../utils/playerCapMapping';
 
 // src/components/obs/ObsPlayerCapSourceApp.tsx
@@ -33,7 +33,6 @@ const parsePlayerCapExtras = (search: string): ObsPlayerCapExtras => {
 const ObsPlayerCapSourceApp: React.FC = () => {
     const paramsRef = useRef(parseObsWebParams(window.location.search));
     const extrasRef = useRef(parsePlayerCapExtras(window.location.search));
-    const obsAiConfigRef = useRef(parseObsAiParams(window.location.search));
     const { host, cfg, isDaylight, transparent, visualizer, themeMode } = paramsRef.current;
     const { player, timeBasis, sticky } = extrasRef.current;
 
@@ -44,7 +43,7 @@ const ObsPlayerCapSourceApp: React.FC = () => {
         [cfg, isDaylight, transparent, visualizer, themeMode],
     );
 
-    return <ObsWebSourceApp source={source} appearance={appearance} obsAiConfig={obsAiConfigRef.current} />;
+    return <ObsWebSourceApp source={source} appearance={appearance} />;
 };
 
 export default ObsPlayerCapSourceApp;

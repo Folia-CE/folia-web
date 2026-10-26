@@ -73,20 +73,32 @@ const readStoredLyricsFontStyle = (): Theme['fontStyle'] => {
     return saved === 'serif' || saved === 'mono' ? saved : 'sans';
 };
 
+// 歌词字号倍率的下限与上限。
+//
+// 下限从 0.85 放到 0.7：原先能缩的最小档仍然偏大 —— 一屏要放下主歌词、译文和下一句预览，
+// 0.85 时三者挨得很紧，看着就是「挤」。放到 0.7 才真的能把整块排宽松。
+export const MIN_LYRICS_FONT_SCALE = 0.7;
+export const MAX_LYRICS_FONT_SCALE = 1.4;
+/** 默认倍率。从 1 降到 0.9：新装进来就比原来小一档，不必先去设置里调。 */
+export const DEFAULT_LYRICS_FONT_SCALE = 0.9;
+
+const clampLyricsFontScale = (value: number): number => (
+    Math.min(MAX_LYRICS_FONT_SCALE, Math.max(MIN_LYRICS_FONT_SCALE, value))
+);
+
 const readStoredFontScale = (key: string): number => {
     if (typeof window === 'undefined') {
-        return 1;
+        return DEFAULT_LYRICS_FONT_SCALE;
     }
 
     const saved = localStorage.getItem(key);
-    if (!saved) return 1;
+    if (!saved) return DEFAULT_LYRICS_FONT_SCALE;
 
     const parsed = parseFloat(saved);
-    if (!Number.isFinite(parsed)) return 1;
+    if (!Number.isFinite(parsed)) return DEFAULT_LYRICS_FONT_SCALE;
 
-    return Math.min(1.4, Math.max(0.85, parsed));
+    return clampLyricsFontScale(parsed);
 };
-
 const readStoredFontWeight = (key: string): number | null => {
     if (typeof window === 'undefined') return null;
 
@@ -317,7 +329,7 @@ export const useTypographySettingsStore = create<TypographySettingsState>((set, 
         set({ lyricsFontStyle: fontStyle });
     },
     handleSetLyricsFontScale: (fontScale) => {
-        const next = Math.min(1.4, Math.max(0.85, fontScale));
+        const next = clampLyricsFontScale(fontScale);
         if (typeof window !== 'undefined') {
             localStorage.setItem('lyrics_font_scale', String(next));
         }
@@ -394,7 +406,7 @@ export const useTypographySettingsStore = create<TypographySettingsState>((set, 
         set({ subtitleFontInheritsLyrics: inheritsLyrics });
     },
     handleSetSubtitleFontScale: (fontScale) => {
-        const next = Math.min(1.4, Math.max(0.85, fontScale));
+        const next = clampLyricsFontScale(fontScale);
         if (typeof window !== 'undefined') {
             localStorage.setItem(SUBTITLE_FONT_SCALE_STORAGE_KEY, String(next));
         }

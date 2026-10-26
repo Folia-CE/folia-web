@@ -4,45 +4,31 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 // test/unit/services/aiTextArchitecture.test.ts
-// The window reaches the AI text services through one file, src/services/aiText.ts. This reads
-// every source file under src/ and fails when another file names what only that one should know:
-// our web routes for the AI asks, the desktop bridge's methods for them, a service's address, or
-// the name of a stored AI setting.
 //
-// In src/ it does not look for model names or for the service ids 'gemini' and 'openai'. Outside
-// src/ it reads only the two main-process files named at the end; shared/, worker/, api-ts/, api/
-// and deploy/ are not looked at.
+// AI 主题生成已经整个删掉了（用户定，2026-10-26）：主题只从公共云缓存来，
+// 见 src/services/aiText.ts。这个文件因此**反过来**守：确保那套东西不会被悄悄塞回来。
+//
+// 早先它读 src/ 下每个文件、禁止别处提到我们的 AI 路由 / 桥方法 / 服务地址 / Key 设置名。
+// 现在那些名字一个都不该出现 —— 连 aiText.ts 自己也不该有，因为那里只剩一次云缓存 GET。
+//
+// 它不看模型名，也不看 'gemini' / 'openai' 这两个服务 id：主题公园里「复制提示词、
+// 自己拿去跑、再把 JSON 贴回来」那条手动路是保留的（aiThemeTransfer），
+// 它不调用任何服务、也不需要 Key，提一句模型名不构成能力。
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const DOOR = 'src/services/aiText.ts';
 
 const NAMES = {
+    /** 我们的主题 / 分词路由。服务端还有实现，但窗口里不该再有人调它们。 */
     route: /\/api\/(?:generate-theme|segment-lyrics)/,
+    /** 桌面桥里那几个让主进程替你调模型的方法。 */
     bridge: /\b(?:generateTheme|segmentLyrics|testAiConnection|listAiModels)\b/,
+    /** 各家的接口地址。 */
     address: /generativelanguage\.googleapis\.com|api\.openai\.com|api\.deepseek\.com|api\.anthropic\.com|moonshot\.(?:cn|ai)|bigmodel\.cn|api\.z\.ai|dashscope|tencent(?:cloud)?maas|xiaomimimo/,
+    /** 存 Key 的设置名。 */
     setting: /\b(?:GEMINI|OPENAI)_API_\w+|\b(?:VITE_)?AI_PROVIDER\b/i,
 };
 type Kind = keyof typeof NAMES;
-
-// Files other than the door that may name some of these, and why.
-const ALLOWED: Record<string, Kind[]> = {
-    // Declares the bridge's methods for TypeScript.
-    'src/vite-env.d.ts': ['bridge'],
-    // Reads which service the web deployment chose (the build's VITE_AI_PROVIDER).
-    'src/services/runtimeConfig.ts': ['setting'],
-    // The settings form: it shows and stores the AI settings under their stored names, and shows
-    // an example address as a placeholder.
-    'src/components/modal/SettingsModal.tsx': ['setting'],
-    // The type of the form's state, which the dialog hands to the page that draws the form.
-    'src/components/modal/settings/pages/settingsPageContext.ts': ['setting'],
-    'src/components/modal/settings/pages/ai/AiProviderSettings.tsx': ['setting'],
-    // Upstream's endpoint check for a stored AI key (is the key still meant for this address).
-    'src/utils/openAIEndpoint.ts': ['setting', 'address'],
-    // Upstream's wall tools ask the bridge for a theme directly; to move behind services/aiText.
-    'src/components/app/wall-tools/useAppWallToolsHost.ts': ['bridge'],
-    'src/components/wall/useWallToolsCommonActions.ts': ['bridge'],
-    'src/components/wall/wallToolsHost.ts': ['bridge'],
-};
 
 const collectSourceFiles = async (relativeDir: string): Promise<string[]> => {
     const entries = await readdir(path.join(repoRoot, relativeDir), { withFileTypes: true });
@@ -58,53 +44,46 @@ const kindsNamedIn = (source: string): Kind[] => (
     (Object.keys(NAMES) as Kind[]).filter(kind => NAMES[kind].test(source))
 );
 
-describe('AI text services in the window', () => {
-    it('names the routes, the bridge, the addresses and the stored settings only in the door', async () => {
-        const files = (await collectSourceFiles('src')).filter(file => file !== DOOR);
+describe('AI generation stays gone from the window', () => {
+    /**
+     * 上游的墙面工具直接从桥里要主题（upstream 的写法，还没挪进 services/）。这份清单是
+     * **迁移债**，不是许可：哪天它挪进来了，这几行就该删掉，测试会替我们盯着。
+     */
+    const KNOWN_UPSTREAM_BRIDGE_USERS: string[] = [
+        'src/components/app/wall-tools/useAppWallToolsHost.ts',
+        'src/components/wall/useWallToolsCommonActions.ts',
+        'src/components/wall/wallToolsHost.ts',
+    ];
+
+    it('no source file names an AI route, bridge method, service address or key setting', async () => {
+        const files = await collectSourceFiles('src');
         const sources = await Promise.all(files.map(file => readFile(path.join(repoRoot, file), 'utf8')));
 
         const violations = files.flatMap((file, index) => (
             kindsNamedIn(sources[index])
-                .filter(kind => !(ALLOWED[file] ?? []).includes(kind))
+                .filter(kind => !(kind === 'bridge' && KNOWN_UPSTREAM_BRIDGE_USERS.includes(file)))
                 .map(kind => `${file} names an AI ${kind}`)
         ));
 
         expect(violations).toEqual([]);
     }, 30_000);
 
-    it('finds those names in the door itself, so the patterns above still match something', async () => {
+    it('the theme source itself names none of them either', async () => {
         const door = await readFile(path.join(repoRoot, DOOR), 'utf8');
 
-        expect(kindsNamedIn(door)).toEqual(['route', 'bridge', 'setting']);
-    });
-});
-
-// The main process sends the requests itself, from electron/aiTextClient.cjs, with the hosts and
-// models of each provider written in its adapter under shared/ai/. The two files that carry an ask
-// to it (the IPC handlers in main.cjs, the bridge in preload.cjs) must not write what the client
-// and the adapters write today: three of their hosts, a model of three families, Gemini's key
-// header or one of the two key settings. This is a list of the names in use, not a rule: another host,
-// another model family or a Bearer header would pass. The two files still read which service is
-// chosen (AI_PROVIDER) and the user's address (OPENAI_API_URL); this does not look for those, nor
-// at any other file under electron/.
-describe('AI text services in the main process', () => {
-    const SERVICE_DETAIL = /generativelanguage\.googleapis\.com|api\.openai\.com|api\.deepseek\.com|gemini-\d|gpt-\d|deepseek-v\d|x-goog-api-key|(?:GEMINI|OPENAI)_API_KEY/i;
-
-    it.each(['electron/main.cjs', 'electron/preload.cjs'])('%s names none of the client\'s hosts, models, key header or key settings', async (file) => {
-        const source = await readFile(path.join(repoRoot, file), 'utf8');
-
-        expect(source.match(SERVICE_DETAIL)?.[0]).toBeUndefined();
+        // 这里曾经是 ['route', 'bridge', 'setting'] —— 那个文件当年是唯一的出口。
+        // 现在它只问云缓存，一个都不该剩下。
+        expect(kindsNamedIn(door)).toEqual([]);
     });
 
-    it('finds those names in the client and the adapters, so the pattern still matches something', async () => {
-        const adapters = (await readdir(path.join(repoRoot, 'shared/ai'))).filter(name => name.endsWith('.mjs'));
-        const sources = await Promise.all(['electron/aiTextClient.cjs', ...adapters.map(name => `shared/ai/${name}`)]
-            .map(file => readFile(path.join(repoRoot, file), 'utf8')));
-        const named = sources.join('\n');
+    it('the theme source only asks the cloud cache, and generates nothing', async () => {
+        const door = await readFile(path.join(repoRoot, DOOR), 'utf8');
 
-        expect(named).toMatch(SERVICE_DETAIL);
-        for (const detail of ['api.openai.com', 'api.deepseek.com', 'generativelanguage.googleapis.com', 'gpt-5', 'gemini-3', 'deepseek-v4', 'x-goog-api-key', 'OPENAI_API_KEY']) {
-            expect(named).toContain(detail);
-        }
+        expect(door).toContain('readAiCloudCacheTheme');
+        // 没有生成入口：这几个名字曾经是这个文件的全部意义。
+        expect(door).not.toContain('generateThemeFromLyrics');
+        expect(door).not.toContain('generateObsThemeFromLyrics');
+        expect(door).not.toContain('requestLyricSegmentation');
+        expect(door).not.toMatch(/\bfetch\(/);
     });
 });

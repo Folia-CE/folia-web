@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { compressConfig } from '@/utils/appearanceCodec';
-import { buildObsAppearanceFromShortcode, parseObsAiParams, parseObsWebParams } from '@/utils/obsWebAppearance';
+import { buildObsAppearanceFromShortcode, parseObsWebParams } from '@/utils/obsWebAppearance';
 import { buildObsSourceUrl, extractCfgFromInput } from '@/utils/obsUrl';
 
 // test/unit/obs/obsWebAppearance.test.ts
@@ -186,23 +186,6 @@ describe('parseObsWebParams', () => {
         expect(parseObsWebParams('?obsTheme=ai').themeMode).toBe('ai');
         expect(parseObsWebParams('').themeMode).toBeNull();
         expect(parseObsWebParams('?obsTheme=nonsense').themeMode).toBeNull();
-    });
-});
-
-describe('parseObsAiParams', () => {
-    it('returns the connection only under obsTheme=ai', () => {
-        expect(parseObsAiParams('?obsTheme=ai')).toEqual({ provider: 'gemini' });
-        expect(parseObsAiParams('?obsTheme=builtin')).toBeNull();
-        expect(parseObsAiParams('?obsTheme=static')).toBeNull();
-        expect(parseObsAiParams('')).toBeNull();
-    });
-
-    // The overlay is keyless: the provider is fixed at build time (VITE_AI_PROVIDER) and no AI secret
-    // is read from the URL, so stray ai* params (including the old aiFollow gate) are ignored.
-    it('ignores ai* params carried in the URL', () => {
-        expect(parseObsAiParams('?obsTheme=ai&aiKey=k&aiProvider=openai&aiUrl=https%3A%2F%2Fx.test&aiModel=m'))
-            .toEqual({ provider: 'gemini' });
-        expect(parseObsAiParams('?aiFollow=1&aiKey=k')).toBeNull();
     });
 });
 

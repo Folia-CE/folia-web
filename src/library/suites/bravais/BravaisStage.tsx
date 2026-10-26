@@ -150,8 +150,9 @@ const BravaisStage: React.FC<LibrarySuiteStageProps> = ({
     const tintIntensity = useLatticeSettingsStore(state => state.latticePosterTintIntensity);
     const stackEdges = useLibraryWallLookStore(state => state.collectionStackEdges);
     const seamDirection = useLibraryWallLookStore(state => state.seamDirection);
+    const seamFlip = useLibraryWallLookStore(state => state.seamFlip);
     const portrait = useMediaQuery(LIBRARY_WALL_PORTRAIT_QUERY);
-    const seamHorizontal = resolveLibraryWallSeamHorizontal(seamDirection, portrait);
+    const seamHorizontal = resolveLibraryWallSeamHorizontal(seamDirection, portrait, seamFlip);
     // 换层编排里按层算开口时读最新的（不进回调的依赖）。
     const seamHorizontalRef = useRef(seamHorizontal);
     seamHorizontalRef.current = seamHorizontal;

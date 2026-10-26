@@ -10,14 +10,14 @@ import type { CommandSyntaxSpec } from './syntax/types';
 
 export const LYRIC_SEGMENTATION_SYNTAX_SPEC: CommandSyntaxSpec = {
     flags: [
-        { name: 'ai', aliases: ['segment'], descriptionKey: 'commandPalette.syntax.lyricSegmentation.ai', descriptionFallback: 'Segment this song with the configured model' },
         { name: 'copy-seg', aliases: ['copy-segmentation', 'copy-current'], descriptionKey: 'commandPalette.syntax.lyricSegmentation.copySeg', descriptionFallback: 'Copy the current segmentation' },
         { name: 'copy-prompt', aliases: ['prompt'], descriptionKey: 'commandPalette.syntax.lyricSegmentation.copyPrompt', descriptionFallback: 'Copy the prompt and lyrics to run elsewhere' },
     ],
     facets: [],
 };
 
-export type LyricSegmentationAction = 'ai' | 'copy-seg' | 'copy-prompt';
+// `ai` 随 AI 生成一起删掉了：现在只剩复制提示词与复制当前分词两个动作。
+export type LyricSegmentationAction = 'copy-seg' | 'copy-prompt';
 
 export type ParsedLyricSegmentationQuery = {
     action: LyricSegmentationAction | null;
@@ -49,3 +49,4 @@ export const looksLikeSegmentationPaste = (text: string, delimiter: string): boo
     if (!trimmed) return false;
     return !trimmed.startsWith('--') || /[\r\n]/.test(trimmed) || trimmed.includes(delimiter);
 };
+

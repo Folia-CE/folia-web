@@ -4,7 +4,6 @@ import { useLyricSegmentationStore } from '../../../stores/useLyricSegmentationS
 import { useVideoLayerSettingsStore } from '../../../stores/useVideoLayerSettingsStore';
 import { getVisualizerRegistryEntry } from '../../visualizer/registry';
 import { smartBeatActive } from '../../../services/beatFx/beatEffects';
-import { isLyricSegmentationAiAvailable } from '../../../services/aiText';
 import type { LyricSegmentationActions } from '../playback/createLyricSegmentationActions';
 
 // src/components/app/command-palette-context/buildVisualizerCommandContext.ts
@@ -46,7 +45,6 @@ export const buildVisualizerCommandContext = (
         usesWordSegmentation: Boolean(getVisualizerRegistryEntry(visualizer.visualizerMode).usesWordSegmentation),
         lyricSegmentation: {
             record: useLyricSegmentationStore.getState().record,
-            isAiAvailable: isLyricSegmentationAiAvailable(),
             save: lyricSegmentationActions.save,
             reset: lyricSegmentationActions.reset,
         },

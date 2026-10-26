@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
-import { generateThemeFromLyrics, isMissingAiApiKeyError } from '../services/aiText';
+import { readCloudThemeFromLyrics } from '../services/aiText';
 import { saveToCache } from '../services/db';
 import { DualTheme, LyricData, SongResult, StatusMessage, Theme, ThemeMode } from '../types';
 import { getCachedThemeState, getCachedThemeStateForSong, getLastDualTheme, getLastLegacyTheme, type ThemeCacheSongKey } from '../services/themeCache';
@@ -636,6 +636,19 @@ export function useThemeController({
         });
     };
 
+    /**
+     * 给当前这首歌定一个主题。
+     *
+     * 现在只有两个来源，按顺序试：
+     *   1. **云缓存** —— 别人算过的同一份歌词，直接拿来用；
+     *   2. **封面取色** —— 云端也没有这首歌，就从封面上取颜色。
+     *
+     * 没有第三条了：AI 生成那条路整个删掉了（见 services/aiText.ts）。所以这个函数
+     * 不会失败 —— 最差也是封面主题，不需要任何 Key、不依赖任何外部模型。
+     *
+     * 名字与 `themeGenerationSongKeysRef` 这些留着旧的叫法，是因为它们描述的是
+     * 「给这首歌定主题」这件事，而不是「去调模型」；调用点遍布整个应用，改名只会制造噪音。
+     */
     const generateAITheme = async (
         lyrics: LyricData | null,
         currentSong: SongResult | null,
@@ -658,8 +671,7 @@ export function useThemeController({
         beginThemeGeneration();
         setStatusMsg({ type: 'info', text: t('status.generatingTheme') });
         try {
-            // The cover source never touches the model, so it also never needs a lyric prompt:
-            // an instrumental with no title still gets a theme from its artwork.
+            // 用户明确选了「按封面」：直接从封面来，不必绕一趟云端。
             if (themeGenerationSource === 'cover') {
                 return await applyCoverDerivedTheme(
                     currentSong,
@@ -673,18 +685,18 @@ export function useThemeController({
             const isPureMusic = Boolean(currentSong?.isPureMusic) || isPureMusicLyricText(allText);
             const promptText = (isPureMusic ? songTitle : allText) || allText;
 
+            // 连歌词都没有（也没歌名）就走封面：纯音乐、还没解析出歌词的，都归这一档。
             if (!promptText) {
-                if (source === 'manual') {
-                    setStatusMsg({ type: 'error', text: t('status.themeGenerationFailed') });
-                }
-                return { status: 'skipped', reason: 'empty-prompt' };
+                return await applyCoverDerivedTheme(currentSong, shouldApply, 'fallback');
             }
 
-            const dualTheme = await generateThemeFromLyrics(promptText, {
-                isPureMusic,
-                songTitle: songTitle || undefined,
-            });
-            const normalizedDualTheme = applyStoredAnimationIntensityToDualTheme(sanitizeDualTheme(dualTheme));
+            const cachedTheme = await readCloudThemeFromLyrics(promptText);
+            if (!cachedTheme) {
+                // 云端没有这首 —— 这就是「最终结果」，不是错误。退回封面取色。
+                return await applyCoverDerivedTheme(currentSong, shouldApply, 'fallback');
+            }
+
+            const normalizedDualTheme = applyStoredAnimationIntensityToDualTheme(sanitizeDualTheme(cachedTheme));
             if (currentSong) {
                 await saveToCache(`dual_theme_${getPlaybackSongKey(currentSong)}`, normalizedDualTheme);
                 saveSyncedThemeWithoutBlocking(currentSong, normalizedDualTheme, source === 'auto' ? 'auto' : 'manual');
@@ -704,24 +716,14 @@ export function useThemeController({
                 type: 'success',
                 text: bgMode === 'custom' && customTheme
                     ? t('notifications.aiThemeUpdatedCustomPreferred')
-                    : t('status.themeApplied', { themeName: selectedTheme.name }),
+                    : t('status.cloudThemeApplied', { themeName: selectedTheme.name }),
             });
 
             return { status: 'generated', applied: true };
         } catch (error: unknown) {
+            // 只可能是意料之外的事（存储写失败之类）：照样给一个封面主题，不让画面空着。
             console.error(error);
-            if (isMissingAiApiKeyError(error)) {
-                return await applyCoverDerivedTheme(
-                    currentSong,
-                    shouldApply,
-                    'fallback',
-                );
-            }
-
-            if (shouldApply()) {
-                setStatusMsg({ type: 'error', text: t('status.themeGenerationFailed') });
-            }
-            return { status: 'failed' };
+            return await applyCoverDerivedTheme(currentSong, shouldApply, 'fallback');
         } finally {
             themeGenerationSongKeysRef.current.delete(songKey);
             endThemeGeneration();

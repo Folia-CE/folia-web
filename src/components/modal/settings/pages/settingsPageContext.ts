@@ -16,22 +16,9 @@ import type { ConfigThemeControls } from './storage/visualConfigTransfer';
 /** The kinds of data the app keeps on disk, each of which can be cleared on its own. */
 export type CacheCategory = 'playlist' | 'lyrics' | 'cover' | 'media' | 'analysis';
 
-/** A provider key the desktop app keeps in its main process. */
-export type AiApiKeyName = 'GEMINI_API_KEY' | 'OPENAI_API_KEY';
 
 /** The desktop app's settings file, as far as the settings dialog reads and writes it. */
 export type ElectronSettingsState = {
-    /** Drafts of a replacement key: a saved key never reaches the renderer. */
-    GEMINI_API_KEY: string;
-    GEMINI_API_MODEL: string;
-    AI_PROVIDER_PRESET: string;
-    OPENAI_API_KEY: string;
-    OPENAI_API_URL: string;
-    OPENAI_API_MODEL: string;
-    OPENAI_API_TEMPERATURE: string;
-    OPENAI_API_STREAM: boolean;
-    AI_PROVIDER: string;
-    USE_SYSTEM_PROXY_FOR_AI: boolean;
     ENABLE_UPDATE_CHECK: boolean;
     ENABLE_AUTO_UPDATE: boolean;
     UPDATE_CHANNEL: 'realeco' | 'limo' | 'cielo' | 'internal';
@@ -51,7 +38,6 @@ export type SettingsPageContextValue = {
         songThemeAutoGenerateEnabled: boolean;
         themeGenerationSource: ThemeGenerationSource;
         /** Whether the AI provider has a saved key; without one the AI source cannot be chosen. */
-        aiApiKeyStatus: 'loading' | 'configured' | 'missing';
         onApplyDefaultTheme: () => void;
         onApplyCustomTheme: () => void;
         onToggleCustomThemePreferred: (enabled: boolean) => void;
@@ -148,8 +134,6 @@ export type SettingsPageContextValue = {
                 electronSaveStatus: 'idle' | 'saving' | 'saved';
                 electronSettings: ElectronSettingsState;
                 onCheckForUpdates: () => Promise<void> | void;
-                /** Removes a saved key from the main process at once. */
-                onClearAiApiKey: (key: AiApiKeyName) => Promise<void> | void;
                 onDownloadUpdate: () => Promise<void> | void;
                 onInstallUpdate: () => Promise<void> | void;
                 onOpenBaiduDownload: () => Promise<void> | void;
@@ -158,10 +142,6 @@ export type SettingsPageContextValue = {
                 onSaveElectronSettings: () => Promise<void> | void;
                 onToggleAutoUpdate: () => Promise<void> | void;
                 onToggleUpdateCheck: () => Promise<void> | void;
-                /** Which provider keys the main process has saved. */
-                savedAiApiKeys: Record<AiApiKeyName, boolean>;
-                /** The endpoint the saved OpenAI-compatible key is sent to, and only to. */
-                savedOpenAIKeyEndpoint: string | null;
                 setElectronSettings: React.Dispatch<React.SetStateAction<ElectronSettingsState>>;
                 /** The update state in a few words, for the button that checks again. */
                 updateBadgeLabel: string;

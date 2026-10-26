@@ -26,6 +26,7 @@ const {
   REMOTE_CONTROL_HIDE_TITLEBAR_SETTING_KEY,
   REMOTE_CONTROL_CLICK_THROUGH_SETTING_KEY,
   REMOTE_CONTROL_EXPAND_COVER_SETTING_KEY,
+  REMOTE_CONTROL_TEXT_SHADE_SETTING_KEY,
   REMOTE_CONTROL_WINDOW_POSITION_SETTING_KEY,
   readRemoteControlWindowSettings,
   shouldShowRemoteUnlockTrayItem,
@@ -2494,6 +2495,7 @@ let remoteControlSkipTaskbarEnabled = false;
 let remoteControlHideTitlebarEnabled = false;
 let remoteControlClickThroughEnabled = false;
 let remoteControlExpandCoverEnabled = true;
+let remoteControlTextShadeEnabled = false;
 let mainWindowAlwaysOnTop = false;
 let mainWindowClickThroughEnabled = false;
 let mainWindowClickThroughUnlockHover = false;
@@ -2686,6 +2688,7 @@ function getPublicSettings() {
     [REMOTE_CONTROL_HIDE_TITLEBAR_SETTING_KEY]: readStoredBoolean(REMOTE_CONTROL_HIDE_TITLEBAR_SETTING_KEY, false),
     [REMOTE_CONTROL_CLICK_THROUGH_SETTING_KEY]: readStoredBoolean(REMOTE_CONTROL_CLICK_THROUGH_SETTING_KEY, false),
     [REMOTE_CONTROL_EXPAND_COVER_SETTING_KEY]: readStoredBoolean(REMOTE_CONTROL_EXPAND_COVER_SETTING_KEY, true),
+    [REMOTE_CONTROL_TEXT_SHADE_SETTING_KEY]: readStoredBoolean(REMOTE_CONTROL_TEXT_SHADE_SETTING_KEY, false),
     [MAIN_WINDOW_ALWAYS_ON_TOP_SETTING_KEY]: readStoredBoolean(MAIN_WINDOW_ALWAYS_ON_TOP_SETTING_KEY, false),
     [TRANSPARENT_PLAYER_BACKGROUND_SETTING_KEY]: readStoredBoolean(TRANSPARENT_PLAYER_BACKGROUND_SETTING_KEY, false),
     [DISCORD_RICH_PRESENCE_ENABLED_SETTING_KEY]: readStoredBoolean(DISCORD_RICH_PRESENCE_ENABLED_SETTING_KEY, false),
@@ -2768,6 +2771,7 @@ remoteControlSkipTaskbarEnabled = readStoredBoolean(REMOTE_CONTROL_SKIP_TASKBAR_
   remoteControlHideTitlebarEnabled = remoteWindowSettings.hideTitlebar;
   remoteControlClickThroughEnabled = remoteWindowSettings.clickThrough;
   remoteControlExpandCoverEnabled = remoteWindowSettings.expandCover;
+  remoteControlTextShadeEnabled = remoteWindowSettings.textShade;
 }
 mainWindowAlwaysOnTop = readStoredBoolean(MAIN_WINDOW_ALWAYS_ON_TOP_SETTING_KEY, false);
 
@@ -3171,6 +3175,7 @@ function buildRemoteControlWindowSettings() {
     hideTitlebar: remoteControlHideTitlebarEnabled,
     clickThrough: remoteControlClickThroughEnabled,
     expandCover: remoteControlExpandCoverEnabled,
+    textShade: remoteControlTextShadeEnabled,
     alwaysOnTopSupported: windowAlwaysOnTopSupported,
   };
 }
@@ -6486,6 +6491,7 @@ ipcMain.handle('save-settings', (event, key, value) => {
     key === REMOTE_CONTROL_HIDE_TITLEBAR_SETTING_KEY ||
     key === REMOTE_CONTROL_CLICK_THROUGH_SETTING_KEY ||
     key === REMOTE_CONTROL_EXPAND_COVER_SETTING_KEY ||
+    key === REMOTE_CONTROL_TEXT_SHADE_SETTING_KEY ||
     key === TRANSPARENT_PLAYER_BACKGROUND_SETTING_KEY ||
     key === DISCORD_RICH_PRESENCE_ENABLED_SETTING_KEY ||
     key === VOICE_INPUT_PAUSE_ENABLED_SETTING_KEY ||
@@ -6677,6 +6683,11 @@ ipcMain.handle('save-settings', (event, key, value) => {
     if (remoteControlExpandCoverEnabled) {
       bringRemoteControlCoverOnScreen(remoteControlWindow);
     }
+    applyRemoteControlWindowPresentation(remoteControlWindow);
+  }
+
+  if (key === REMOTE_CONTROL_TEXT_SHADE_SETTING_KEY) {
+    remoteControlTextShadeEnabled = Boolean(nextValue);
     applyRemoteControlWindowPresentation(remoteControlWindow);
   }
 

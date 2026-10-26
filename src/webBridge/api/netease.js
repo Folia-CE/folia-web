@@ -1157,8 +1157,10 @@ function cookieHeaderFromSetCookieList(list) {
  * QR unikey/check must use EAPI (weapi often returns empty body in extension SW).
  * Do NOT route 800-803 through api() — it treats those codes as fatal errors.
  */
-async function neteaseQrEapi(path, data) {
-  const raw = await eapiRequest(path, data || {}, '');
+// cookie 一路带下去：取码、查询、确认要落在**同一个**网易云会话里，否则 803 回来的
+// Set-Cookie 与这边对不上，页面拿不到登录态。
+async function neteaseQrEapi(path, data, cookie) {
+  const raw = await eapiRequest(path, data || {}, cookie || '');
   return {
     body: raw.body || {},
     setCookies: raw.setCookies || [],
@@ -1166,11 +1168,11 @@ async function neteaseQrEapi(path, data) {
   };
 }
 
-export async function handleLoginQrKey() {
+export async function handleLoginQrKey(cookie) {
   let body = {};
   try {
     // type:3 is the eapi / App QR key type (verified working)
-    ({ body } = await neteaseQrEapi('/api/login/qrcode/unikey', { type: 3 }));
+    ({ body } = await neteaseQrEapi('/api/login/qrcode/unikey', { type: 3 }, cookie));
   } catch (err) {
     throw new Error((err && err.message) || '获取二维码 key 失败');
   }
@@ -1189,13 +1191,13 @@ export async function handleLoginQrCreate(key) {
   return { img, qrimg: img, url };
 }
 
-export async function handleLoginQrCheck(key) {
+export async function handleLoginQrCheck(key, cookieHeader) {
   key = String(key || '').trim();
   if (!key) return { code: 800, message: '缺少二维码 key', loggedIn: false };
   let body = {};
   let setCookies = [];
   try {
-    const raw = await neteaseQrEapi('/api/login/qrcode/client/login', { key, type: 3 });
+    const raw = await neteaseQrEapi('/api/login/qrcode/client/login', { key, type: 3 }, cookieHeader);
     body = raw.body || {};
     setCookies = raw.setCookies || [];
   } catch (err) {
@@ -1263,8 +1265,16 @@ export async function handleLoginQrCheck(key) {
        *
        * 用 getNeteaseCookie() 的结果而不是 cookieText：它已经把这次 803 的 Set-Cookie
        * 合并进之前的分段里了，比单看这一次更全。
+       *
+       * 但**不能**简单写 `cookie || cookieText`：罐里没有登录态时它就是那串游客 cookie
+       * （MUSIC_A / __csrf，非空），于是页面收到的是一份「不带 MUSIC_U 的 cookie」，存下去
+       * 等于没登录 —— 紧接着 user/account 拿回游客账号，报 account-not-read。所以两份合并，
+       * 这次 803 的字段放在后面压过罐里的同名值。
        */
-      cookie: cookie || cookieText || '',
+      cookie: (() => {
+        const merged = Object.assign(parseCookieString(cookie || ''), parseCookieString(cookieText || ''));
+        return Object.entries(merged).map(([name, value]) => `${name}=${value}`).join('; ');
+      })(),
     });
   }
 

@@ -694,9 +694,19 @@ function serveFile(res, filePath) {
   const type = MIME[ext] || 'application/octet-stream';
   // 带内容哈希的资源可以长缓存，html 不要缓存（否则更新后拿到旧壳）。
   const longCache = /\.[0-9a-f]{8,}\.\w+$/.test(filePath) || filePath.includes(`${path.sep}assets${path.sep}`);
+  /*
+   * Service Worker 与它自己的运行时不走缓存。
+   *
+   * 这两个文件换成新版本才会让应用更新；给它们 1 小时的 max-age，浏览器和中间缓存就会一直端
+   * 旧的 SW 出来，而旧 SW 的预缓存里全是旧壳和旧 chunk —— 页面看着能开，跑的却是上一版代码
+   * （诊断里 build 一直停在旧提交号就是这么来的）。html 已经是 no-cache，SW 同样要。
+   */
+  const workerFile = /^(?:sw|workbox-[0-9a-f]+)\.js$/.test(path.basename(filePath));
   res.writeHead(200, {
     'Content-Type': type,
-    'Cache-Control': ext === '.html' ? 'no-cache' : (longCache ? 'public, max-age=31536000, immutable' : 'public, max-age=3600'),
+    'Cache-Control': workerFile || ext === '.html'
+      ? 'no-cache'
+      : (longCache ? 'public, max-age=31536000, immutable' : 'public, max-age=3600'),
   });
   fs.createReadStream(filePath).pipe(res);
 }

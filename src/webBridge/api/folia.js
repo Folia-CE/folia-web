@@ -1558,8 +1558,19 @@ export async function handleFoliaApiRequest(input) {
   if (path === '/login/status') return await handleLoginStatus(cookie);
   if (path === '/user/account') return await handleUserAccount(cookie);
   if (path === '/logout') return { code: 200 };
+  /*
+   * 扫码这一路要的是「会话连起来」，不是「已经登录」。
+   *
+   * 上面那个 cookie 只收带 MUSIC_U 的，游客 cookie（MUSIC_A / __csrf）会被丢掉 —— 那是给
+   * 搜索、歌单这些接口用的判断，扫码时页面手上恰恰只有游客 cookie。丢了它，取码和查询就各自
+   * 落在网易云新开的匿名会话里，确认之后那边回的 Set-Cookie 也就对不上这边，页面收不到登录态
+   * （诊断里的 `session: login cookie=no` 加 `same-user=no`）。
+   *
+   * 所以这里单独给扫码留一份：页面上带什么就用什么，没带才去罐里找。
+   */
+  const resolveQrCookie = async () => sent || await getNeteaseCookie();
   if (path === '/login/qr/key') {
-    const result = await handleLoginQrKey();
+    const result = await handleLoginQrKey(await resolveQrCookie());
     return { code: 200, data: { code: 200, unikey: result.key } };
   }
   if (path === '/login/qr/create') {
@@ -1569,7 +1580,7 @@ export async function handleFoliaApiRequest(input) {
   }
   if (path === '/login/qr/check') {
     const key = firstValue(params.get('key'), body.key);
-    return await handleLoginQrCheck(key);
+    return await handleLoginQrCheck(key, await resolveQrCookie());
   }
   if (path === '/cloudsearch' || path === '/search') return await handleSearch(url, cookie);
   if (path === '/song/detail') return await handleSongDetail(url, cookie);

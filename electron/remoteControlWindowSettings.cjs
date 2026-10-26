@@ -6,6 +6,8 @@ const REMOTE_CONTROL_HIDE_TITLEBAR_SETTING_KEY = 'REMOTE_CONTROL_HIDE_TITLEBAR';
 const REMOTE_CONTROL_CLICK_THROUGH_SETTING_KEY = 'REMOTE_CONTROL_CLICK_THROUGH';
 const REMOTE_CONTROL_EXPAND_COVER_SETTING_KEY = 'REMOTE_CONTROL_EXPAND_COVER';
 const REMOTE_CONTROL_TEXT_SHADE_SETTING_KEY = 'REMOTE_CONTROL_TEXT_SHADE';
+/** Where the window last sat, as { x, y }; read back through resolveRemoteControlWindowPosition. */
+const REMOTE_CONTROL_WINDOW_POSITION_SETTING_KEY = 'REMOTE_CONTROL_WINDOW_POSITION';
 
 /** Reads the switches from a settings reader; expand cover defaults to on, the others to off. */
 function readRemoteControlWindowSettings(readBoolean) {
@@ -41,6 +43,7 @@ module.exports = {
   REMOTE_CONTROL_CLICK_THROUGH_SETTING_KEY,
   REMOTE_CONTROL_EXPAND_COVER_SETTING_KEY,
   REMOTE_CONTROL_TEXT_SHADE_SETTING_KEY,
+  REMOTE_CONTROL_WINDOW_POSITION_SETTING_KEY,
   readRemoteControlWindowSettings,
   shouldShowRemoteUnlockTrayItem,
   applyRemoteControlMouseIgnore,

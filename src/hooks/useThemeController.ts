@@ -608,6 +608,34 @@ export function useThemeController({
         return { status: 'generated', applied: true };
     };
 
+    /**
+     * 把云缓存取回的主题落到界面上。
+     *
+     * 与 `generateAITheme` 的区别：这里**没有生成**，主题是别人算好的，直接落盘 + 应用。
+     * 所以它不看 AI 主题开关，也不需要 Key —— 这正是云缓存存在的意义。
+     *
+     * 落盘用与生成完全相同的那一套（本地缓存 + 跨设备同步），
+     * 这样下一次换回这首歌时走的是普通缓存，不会再问云端。
+     */
+    const applyCloudTheme = async (song: SongResult, theme: DualTheme): Promise<void> => {
+        const normalized = applyStoredAnimationIntensityToDualTheme(sanitizeDualTheme(theme));
+        await saveToCache(`dual_theme_${getPlaybackSongKey(song)}`, normalized);
+        saveSyncedThemeWithoutBlocking(song, normalized, 'auto');
+
+        const latestSong = usePlaybackStore.getState().currentSong;
+        const latestSongKey = latestSong ? getPlaybackSongKey(latestSong) : '__no_song__';
+        // 取回来的路上已经换歌了：存进它自己的缓存就好，不要动现在这一首的画面。
+        if (latestSongKey !== getPlaybackSongKey(song)) return;
+
+        setCurrentSongHasLocalAiTheme(true);
+        applyDualTheme(normalized);
+        const selected = getSelectedDualTheme(normalized, isDaylight);
+        setStatusMsg({
+            type: 'success',
+            text: t('status.cloudThemeApplied', { themeName: selected.name }),
+        });
+    };
+
     const generateAITheme = async (
         lyrics: LyricData | null,
         currentSong: SongResult | null,
@@ -724,6 +752,7 @@ export function useThemeController({
         applyThemeFallback,
         restoreCachedThemeForSong,
         generateAITheme,
+        applyCloudTheme,
         getThemeParkSeedTheme,
         saveCustomDualTheme,
         saveEditedAiDualTheme,

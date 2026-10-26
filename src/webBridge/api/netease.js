@@ -1249,6 +1249,22 @@ export async function handleLoginQrCheck(key) {
       avatar: profile.avatarUrl || body.avatarUrl || info.avatar || '',
       loggedIn: !!(info.loggedIn || cookieText),
       hasCookie: !!(info.loggedIn || cookieText || hasNeteaseLogin(cookie)),
+      /*
+       * 把登录 cookie 一并交回页面。
+       *
+       * 上面 saveProviderCookie 存的那一份在**这个桥自己的** chrome.storage.local 里
+       * （网页版就是服务端进程内存）；而页面那边（services/onlineMusic/netease/
+       * neteaseProvider.ts 的 checkLogin）只在 response.cookie 上取登录态，存进它自己的
+       * localStorage，之后每次请求把 cookie 拼进 query 带过来。
+       *
+       * 两边是两套存储。这里不回传，页面那一侧就永远认为「没登录」：扫码明明成功了
+       * （green 803），紧接着 user/account 却只能拿到游客账号 —— 诊断里就是
+       * `session: login cookie=no` 加 `same-user=no`，最后报 account-not-read。
+       *
+       * 用 getNeteaseCookie() 的结果而不是 cookieText：它已经把这次 803 的 Set-Cookie
+       * 合并进之前的分段里了，比单看这一次更全。
+       */
+      cookie: cookie || cookieText || '',
     });
   }
 

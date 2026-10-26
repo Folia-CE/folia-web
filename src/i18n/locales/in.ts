@@ -365,6 +365,7 @@ export default {
     "aiThemeUpdated": "Tema AI diperbarui: {{themeName}}",
     "themeGenerationFailed": "Gagal membuat tema.",
     "coverThemeApplied": "Tema berdasarkan sampul diterapkan: {{themeName}}",
+    "cloudThemeApplied": "Tema dari cache awan diterapkan: {{themeName}}",
     "aiFallbackThemeUsed": "AI belum dikonfigurasi, menggunakan tema bawaan",
     "playbackError": "Kesalahan Pemutaran",
     "loadingSong": "Memuat URL lagu...",

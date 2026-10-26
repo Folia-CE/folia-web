@@ -5,6 +5,7 @@ import { getWebAiProvider, type WebAiProvider } from "./runtimeConfig";
 import {
   fingerprintLyricSource,
   fingerprintLyricText,
+  readAiCloudCacheTheme,
   withAiCloudCache,
 } from "./aiCloudCache";
 export {
@@ -70,29 +71,66 @@ export const isMissingAiApiKeyError = (error: unknown) => {
       && /(?:not configured|missing|configure)/i.test(message));
 };
 
-/** 有没有桌面端那条「去主进程生成主题」的桥。有它就不走云缓存。 */
-const hasDesktopThemeBridge = (): boolean => (
-  typeof window !== 'undefined'
-  && (window as any).electron
-  && typeof (window as any).electron.generateTheme === 'function'
-);
+/**
+ * 云端存回来的主题一律当不可信输入：形状不对就当没命中。
+ *
+ * 两条路（换歌时的只读拉取、生成时的读穿）共用这一个闸门，
+ * 免得一处严一处松 —— 服务端一条脏数据就能把播放页搞崩。
+ *
+ * ⚠️ 把「清洗」和「贴动画强度」分开看：前者决定这份数据能不能用，后者只是套一层本机偏好。
+ * 早先这里把两步一起放在 try 里，结果是**本机偏好读不到就让整条缓存作废** ——
+ * 明明是一份合法主题（`sanitizeDualTheme` 已经认了），却因为 localStorage 缺了个键
+ * 被判成没命中，白丢一次免费命中，还要多烧一次模型调用。清洗过的就是能用的，
+ * 强度贴不上就用清洗后的原样。
+ */
+const validateCachedDualTheme = (value: unknown): DualTheme | null => {
+  if (!value || typeof value !== 'object') return null;
+  let sanitized: DualTheme;
+  try {
+    sanitized = sanitizeDualTheme(value as DualTheme);
+  } catch {
+    return null;
+  }
+  try {
+    return applyStoredAnimationIntensityToDualTheme(sanitized);
+  } catch {
+    return sanitized;
+  }
+};
+
+/**
+ * 换歌时先问一次云缓存，**不看 AI 主题功能开没开**。
+ *
+ * 为什么必须独立于开关：拉取是纯读，不需要 Key，也不花一次模型调用。
+ * 把它挂在「生成」那一步后面（也就是只写在 generateThemeFromLyrics 里），
+ * 结果是 AI 主题功能一关就再也查不到缓存 —— 而这恰恰最需要它：
+ * 没开 AI、没填 Key 的人，本来一个主题都拿不到，缓存是他们唯一的机会。
+ *
+ * 没命中返回 null，调用方照旧走各自的逻辑（不生成、或走本地缓存）。
+ */
+export const readCloudThemeFromLyrics = async (
+  lyricsText: string,
+): Promise<DualTheme | null> => {
+  if (!lyricsText) return null;
+  return readAiCloudCacheTheme<DualTheme>({
+    fingerprint: fingerprintLyricSource('stage', lyricsText),
+    validate: validateCachedDualTheme,
+  });
+};
 
 export const generateThemeFromLyrics = async (
   lyricsText: string,
   options?: { isPureMusic?: boolean; songTitle?: string }
 ): Promise<DualTheme> => {
   try {
-    // 桌面端不走云缓存：主题由主进程生成，那台机器有自己的 Key，
-    // 而且主进程那条路本来就会把结果落到本机缓存。硬要走一趟云端，
-    // 等于给每次生成多加一次网络往返 —— 桌面端一个字节都不该发出去。
-    if (hasDesktopThemeBridge()) {
-      return generateThemeUncached(lyricsText, options);
-    }
-
     // 云缓存：先问「这份歌词有没有人生成过」。
     //
     // 命中就直接用别人的答案 —— 这对**没填 Key 的人**是关键：他本来一个主题都生成不出来，
     // 能命中别人的结果就是白赚。缓存永不阻塞功能，所以下面所有失败都只是「没命中」。
+    //
+    // 桌面端现在也走这一趟：早先这里跳过云缓存（理由是「主进程有自己的 Key，
+    // 不该多一次往返」），但那样等于让桌面端永远吃不到公共缓存 —— 一份别人的答案
+    // 白放着不取，反而要多花一次模型调用。一次 GET 换一次可能的免费命中，划算。
     //
     // ⚠️ 指纹的输入必须与**服务端**算键的口径一致，否则永远命中不了：
     //   1. 调用方（useThemeController）传进来的 `lyricsText` 已经是
@@ -106,14 +144,7 @@ export const generateThemeFromLyrics = async (
       kind: 'stage',
       fingerprint,
       generate: () => generateThemeUncached(lyricsText, options),
-      validate: (value) => {
-        if (!value || typeof value !== 'object') return null;
-        try {
-          return applyStoredAnimationIntensityToDualTheme(sanitizeDualTheme(value as DualTheme));
-        } catch {
-          return null;
-        }
-      },
+      validate: validateCachedDualTheme,
       songTitle: options?.songTitle,
       lyricHash: fingerprintLyricText(lyricsText),
       isPureMusic: options?.isPureMusic,

@@ -272,4 +272,5 @@ ssh user@your-server 'sudo systemctl restart folia'
 | 页面能开，一登录就 500 | `src/webBridge/` 没传上去 |
 | 一直「未登录」/ 扫码没反应 | 多实例负载均衡导致会话不粘滞（见第 9 节） |
 | 接口全 502 | 服务器访问不了外网；或反代把 `/api/` 拦了 |
+| QQ / 酷狗搜不到东西，控制台里 `/api/lyric-proxy?url=...` 一片 404 | 这两家的搜索、匿名取歌不走 bridge，走的是 `/api/lyric-proxy`，必须由这台服务接住。确认跑的是当前这份 `server/static-server.mjs`，且反代没把 `/api/lyric-proxy` 漏掉（只放行 `/api/__folia_bridge` 就会这样） |
 | 长按/刷新后掉登录 | 正常 —— 进程重启了，登录态在内存里 |

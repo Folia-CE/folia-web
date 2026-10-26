@@ -365,6 +365,7 @@ export default {
     "aiThemeUpdated": "AI 主题已更新: {{themeName}}",
     "themeGenerationFailed": "主题生成失败。",
     "coverThemeApplied": "已根据封面生成主题：{{themeName}}",
+    "cloudThemeApplied": "已应用云端缓存的主题：{{themeName}}",
     "aiFallbackThemeUsed": "AI功能未配置，使用内置主题",
     "playbackError": "播放出错",
     "loadingSong": "正在获取歌曲链接...",

@@ -67,7 +67,9 @@ describe('QQ serverless deployment gates', () => {
         // 非相对导入一个都不该有：既没有 npm 包（Workers 装不到），也没有 `node:*`
         // （Cloudflare 能靠 nodejs_compat 容忍，Vercel Edge 会在部署阶段直接拒收）。
         expect(external).toEqual([]);
-    });
+        // 这条要把整棵 import 图读一遍，和别的重活并跑时轻松超过 5 秒默认值；
+        // 给它自己的额度，免得因为机器忙而红。
+    }, 60_000);
 
     it('defines every process.env reference before Cloudflare evaluates the bundle', () => {
         const { files } = walkImportGraph(serverlessEntry);

@@ -314,6 +314,31 @@ export const pushAiCloudCache = async (
 export type AiCloudCacheSource = 'cloud' | 'ai';
 
 /**
+ * 只查一次云缓存，**不触发生成**。
+ *
+ * 这是给「换歌时先看看有没有现成的」用的，与 `withAiCloudCache` 的区别就一条：
+ * 没命中就返回 null，不会去叫模型。所以它可以在**任何**状态下被调用 ——
+ * AI 主题功能关着、没填 Key、甚至根本没打算生成，都可以先来查一下。
+ *
+ * 这与「拉取不需要 Key」那条纪律是一件事：拉取是纯读，它不该被生成开关挡在外面。
+ *
+ * `validate` 同样是调用方的闸门：缓存里的一律当不可信输入。
+ */
+export const readAiCloudCacheTheme = async <T>(options: {
+    fingerprint: string;
+    validate: (value: unknown) => T | null;
+    kind?: AiCloudCacheKind;
+}): Promise<T | null> => {
+    const pulled = await pullAiCloudCache(options.kind ?? 'stage', options.fingerprint);
+    if (pulled.status !== 'hit') return null;
+    try {
+        return options.validate(pulled.payload);
+    } catch {
+        return null;
+    }
+};
+
+/**
  * 唯一该被功能代码调用的那个入口：先问缓存，没有再生成，生成完回传。
  *
  * `validate` 是调用方自己的闸门 —— 缓存里的东西**一律当不可信输入**处理，

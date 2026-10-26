@@ -4,8 +4,10 @@ import {
     generateObsThemeFromLyrics,
     generateThemeFromLyrics,
     isMissingAiApiKeyError,
+    readCloudThemeFromLyrics,
 } from '@/services/aiText';
 import { segmentLyricsWithAi } from '@/services/lyricSegmentationAi';
+import { resetFoliaCloudSettingsCache } from '@/services/foliaCloud';
 
 // test/unit/services/aiTextRequests.test.ts
 // What the window sends for each AI ask (a theme from lyrics, a lyric segmentation), on each way
@@ -49,10 +51,14 @@ const stubWebWindow = (aiProvider: 'gemini' | 'openai', extra: Record<string, un
 afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+    // 云缓存设置是模块级缓存：上一个用例定下的东西会一直生效，后面改了 window 也没用。
+    resetFoliaCloudSettingsCache();
 });
 
 describe('a theme from lyrics', () => {
-    it('goes through the desktop bridge when there is one, and sends nothing to a web route', async () => {
+    // 桌面端也要先问一次云缓存：缓存是纯读、不要 Key，命中就省下一次模型调用。
+    // 「不发路由请求」仍然成立 —— 只有那条 GET 出去，生成还是交给主进程。
+    it('goes through the desktop bridge when there is one, after asking the cloud cache', async () => {
         const generateTheme = vi.fn().mockResolvedValue(THEME_ANSWER);
         vi.stubGlobal('window', { electron: { generateTheme } });
         const requests = recordFetch(jsonAnswer({}));
@@ -61,11 +67,28 @@ describe('a theme from lyrics', () => {
 
         expect(generateTheme).toHaveBeenCalledTimes(1);
         expect(generateTheme).toHaveBeenCalledWith('la la la', { isPureMusic: false, songTitle: 'Song' });
-        expect(requests).toEqual([]);
+        // 云缓存未命中：一次 GET 去问，生成之后一次 PUT 把结果回传。
+        // 桌面端该走的主进程那条路照样没被换成 web route。
+        expect(requests.map(request => request.init?.method ?? 'GET')).toEqual(['GET', 'PUT']);
+        expect(String(requests[0]?.url)).toContain('/api/ai-cache/');
         expect(theme).toMatchObject({
             light: { name: 'Dawn', backgroundColor: '#fff8e7', animationIntensity: 'normal' },
             dark: { name: 'Night', backgroundColor: '#101820', animationIntensity: 'normal' },
         });
+    });
+
+    // 桌面端命中云端时，主进程一次都不该被叫到。
+    // 用另一段歌词：上一个用例把同一份歌词记成了「没命中」（aiCloudCache 有一层
+    // 进程级的 miss 缓存，5 分钟内不再问），换一份才真的会去 GET。
+    it('takes the cloud answer on the desktop too, without calling the bridge', async () => {
+        const generateTheme = vi.fn().mockResolvedValue(THEME_ANSWER);
+        vi.stubGlobal('window', { electron: { generateTheme } });
+        recordFetch(jsonAnswer({ hit: true, entry: { payload: { theme: THEME_ANSWER } } }));
+
+        const theme = await generateThemeFromLyrics('na na na, a different set', { isPureMusic: false, songTitle: 'Song' });
+
+        expect(generateTheme).not.toHaveBeenCalled();
+        expect(theme).toMatchObject({ light: { name: 'Dawn' } });
     });
 
     it.each([

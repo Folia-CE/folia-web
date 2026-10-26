@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NeteaseLoginHttpError, neteaseApi } from '@/services/onlineMusic/netease/netease';
 import { describeNeteaseFailure } from '@/services/onlineMusic/netease/neteaseFailure';
 import { NETEASE_SONG_DETAIL_BATCH, neteaseProvider } from '@/services/onlineMusic/netease/neteaseProvider';
+import { readProviderSessionValue } from '@/services/onlineMusic/providerStorage';
 import type { UnifiedSong } from '@/types';
 import { OnlineProviderError } from '@/types/onlineMusic';
 import { parseLyricsAsync } from '@/utils/lyrics/workerClient';
@@ -385,6 +386,49 @@ describe('neteaseProvider', () => {
     ])('maps QR code %s to %s', async (code, state) => {
         vi.mocked(neteaseApi.checkQr).mockResolvedValue({ code } as any);
         await expect(neteaseProvider.auth!.checkLogin!('key')).resolves.toMatchObject({ state });
+    });
+
+    // 扫码确认那一刻只有一个机会把登录态存下来：803 的正文里要是没有 cookie，
+    // 后面每一次请求都还拿着游客会话 —— 表现就是诊断包里那个组合：
+    // `session: login cookie=no` 加上 `user/account ... same-user=no`，
+    // 扫码明明成功了，最后却报 account-not-read（账号没读出来）。
+    //
+    // 网页版尤其容易撞上：桥（webBridge/api/netease.js）把 cookie 存进它自己的
+    // chrome.storage.local，页面这边只认 response.cookie，两边是两套存储。
+    // 扫码确认时写入的那份登录 cookie 存在 localStorage 里（services/onlineMusic/providerStorage），
+    // 没有它写入会被静默跳过 —— 测试里就得给一个能记住东西的。
+    it('keeps the login cookie of a confirmed QR code, not just the state', async () => {
+        const store = new Map<string, string>();
+        vi.stubGlobal('localStorage', {
+            getItem: (key: string) => store.get(key) ?? null,
+            setItem: (key: string, value: string) => { store.set(key, value); },
+            removeItem: (key: string) => { store.delete(key); },
+        });
+        vi.mocked(neteaseApi.checkQr).mockResolvedValue({
+            code: 803,
+            cookie: 'MUSIC_U=token-1; __csrf=csrf-1',
+        } as any);
+
+        await expect(neteaseProvider.auth!.checkLogin!('key')).resolves.toMatchObject({ state: 'confirmed' });
+        expect(readProviderSessionValue('netease', 'cookie', ['netease_cookie']))
+            .toBe('MUSIC_U=token-1; __csrf=csrf-1');
+        vi.unstubAllGlobals();
+    });
+
+    // 803 但正文里没有 cookie（网关抽风、结构变了）：不能把空串当登录态写进去，
+    // 那会把之前好好的登录覆盖掉。
+    it('writes no cookie when a confirmed answer carries none', async () => {
+        const store = new Map<string, string>();
+        vi.stubGlobal('localStorage', {
+            getItem: (key: string) => store.get(key) ?? null,
+            setItem: (key: string, value: string) => { store.set(key, value); },
+            removeItem: (key: string) => { store.delete(key); },
+        });
+        vi.mocked(neteaseApi.checkQr).mockResolvedValue({ code: 803 } as any);
+
+        await expect(neteaseProvider.auth!.checkLogin!('key')).resolves.toMatchObject({ state: 'confirmed' });
+        expect(readProviderSessionValue('netease', 'cookie', ['netease_cookie'])).toBeNull();
+        vi.unstubAllGlobals();
     });
 
     // NetEase's own 502, which its docs say can follow a scan: the local backend hands it on with HTTP 200

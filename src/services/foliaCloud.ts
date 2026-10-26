@@ -91,6 +91,19 @@ export const subscribeFoliaCloudSettings = (listener: () => void): (() => void) 
 
 export const getFoliaCloudSettingsVersion = (): number => settingsVersion;
 
+/**
+ * 丢掉内存里那份设置，下次读重新从存储取。
+ *
+ * 给测试用：这份缓存是**模块级**的，同一进程里跑多个用例时，
+ * 前一个用例定下的设置会一直生效，后面的用例改 `window.localStorage` 也没用。
+ * 线上没有调用它的地方 —— 设置变了走 `updateFoliaCloudSettings`，那条路会自己更新缓存。
+ */
+export const resetFoliaCloudSettingsCache = (): void => {
+    cachedSettings = null;
+    settingsVersion += 1;
+    listeners.forEach(listener => listener());
+};
+
 export const isFoliaCloudCacheEnabled = (): boolean => readFoliaCloudSettings().enabled;
 
 export const resolveCloudBaseUrl = (): string => readFoliaCloudSettings().baseUrl;

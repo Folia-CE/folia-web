@@ -427,6 +427,117 @@ function resolveUpstreamPath(url) {
 }
 
 /**
+ * 歌词 / 封面中转的白名单，与 `api-ts/lyric-proxy.ts` 的 `isAllowedLyricProxyHost` 一致。
+ *
+ * 这不是一个通用代理：只放行 QQ 与酷狗那几台歌词/封面主机。放宽这条名单等于把
+ * 这台服务器变成任意中转，别人就能拿它去别的地方了。
+ */
+function isAllowedLyricProxyHost(hostname) {
+  return hostname === 'qq.com' || hostname.endsWith('.qq.com')
+    || hostname === 'y.gtimg.cn'
+    || hostname === 'kugou.com' || hostname.endsWith('.kugou.com');
+}
+
+/** 中转时不转发给上游的请求头（与 Vercel 那份保持同一套）。 */
+const LYRIC_PROXY_IGNORED_HEADERS = new Set([
+  'host', 'connection', 'content-length', 'origin', 'referer', 'cookie',
+  'authorization', 'proxy-authorization', 'x-vercel-protection-bypass',
+]);
+
+/**
+ * `/api/lyric-proxy?url=...`：把一次请求原样转给上游，再把回答转回来。
+ *
+ * 与 `/api/<upstream>/...` 的区别：那条是按主机名重写路径，这条是**整条 URL 由调用方给**，
+ * 所以必须靠白名单把关。语义照抄 `api-ts/lyric-proxy.ts`，包括 u.y.qq.com 那个
+ * 匿名 Cookie —— QQ 的 musicu 没有它会拒绝匿名请求。
+ */
+async function handleLyricProxy(req, res, url) {
+  if (req.method === 'OPTIONS') {
+    applyCors(res);
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
+  const targetUrlStr = url.searchParams.get('url');
+  if (!targetUrlStr) {
+    sendJson(res, 400, { error: 'Missing url parameter' });
+    return;
+  }
+
+  let targetUrl;
+  try {
+    targetUrl = new URL(targetUrlStr);
+  } catch {
+    sendJson(res, 400, { error: 'Invalid url parameter' });
+    return;
+  }
+  if (targetUrl.protocol !== 'http:' && targetUrl.protocol !== 'https:') {
+    sendJson(res, 403, { error: 'Forbidden: protocol not allowed' });
+    return;
+  }
+  if (!isAllowedLyricProxyHost(targetUrl.hostname)) {
+    sendJson(res, 403, { error: 'Forbidden: Domain not allowed' });
+    return;
+  }
+
+  const headers = {};
+  for (const [key, value] of Object.entries(req.headers)) {
+    if (LYRIC_PROXY_IGNORED_HEADERS.has(key.toLowerCase())) continue;
+    if (Array.isArray(value)) headers[key] = value.join(', ');
+    else if (value != null) headers[key] = value;
+  }
+  if (targetUrl.hostname === 'u.y.qq.com') {
+    headers.Cookie = 'tmeLoginType=-1;';
+    headers['User-Agent'] = 'okhttp/3.14.9';
+  }
+
+  const method = (req.method || 'GET').toUpperCase();
+  const hasBody = method !== 'GET' && method !== 'HEAD';
+  const body = hasBody ? await readBody(req) : undefined;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30_000);
+  let upstream;
+  try {
+    upstream = await fetch(targetUrl, {
+      method,
+      headers,
+      body,
+      redirect: 'follow',
+      signal: controller.signal,
+    });
+  } catch (error) {
+    clearTimeout(timer);
+    sendJson(res, 502, {
+      error: 'upstream request failed',
+      details: error instanceof Error ? error.message : String(error),
+    });
+    return;
+  }
+  clearTimeout(timer);
+
+  const contentType = upstream.headers.get('content-type') || '';
+  // 音频/视频同样不搬（封面是图片，照常放行）。
+  if (isForbiddenPayload(contentType)) {
+    if (upstream.body) upstream.body.cancel().catch(() => {});
+    sendJson(res, 415, {
+      error: 'media bytes are not proxied',
+      detail: '音频与视频必须由浏览器直接从各家 CDN 拉取，不能经过这个服务。',
+      contentType,
+    });
+    return;
+  }
+
+  applyCors(res);
+  res.statusCode = upstream.status;
+  res.setHeader('Content-Type', contentType || 'application/octet-stream');
+  const buffer = Buffer.from(await upstream.arrayBuffer());
+  res.setHeader('Content-Length', String(buffer.length));
+  res.end(buffer);
+}
+
+/**
  * 把上游响应的 Set-Cookie 收下来，改写成浏览器能接受的形式。
  *
  * 代理和上游不同源（我们发的是 127.0.0.1，上游是 music.163.com），浏览器不会替我们
@@ -611,6 +722,25 @@ const server = http.createServer((req, res) => {
     handleBridge(req, res).catch((error) => {
       if (!res.headersSent) {
         sendJson(res, 500, { __foliaBridgeError: 'INTERNAL', message: error instanceof Error ? error.message : String(error) });
+      } else {
+        res.end();
+      }
+    });
+    return;
+  }
+
+  // 「歌词中转」：/api/lyric-proxy?url=<编码后的上游地址>。
+  //
+  // 网页版有两条路要它：QQ 的 musicu（匿名搜歌、按 songid 查歌）与酷狗的搜索接口
+  // 都不返回 Access-Control-Allow-Origin，浏览器直接 fetch 必被拦。
+  // 桌面端有主进程补头，网页版就得靠这个同源中转 —— src/services/lyricProxy.ts
+  // 拼的正是这个地址，缺了它这两家就是一片 404。
+  //
+  // 白名单与 api-ts/lyric-proxy.ts 一致：只许歌词/封面那几个域，不是通用代理。
+  if (url.pathname === '/api/lyric-proxy' || url.pathname === '/api/lyric-proxy/') {
+    handleLyricProxy(req, res, url).catch((error) => {
+      if (!res.headersSent) {
+        sendJson(res, 500, { error: 'Proxy request failed', details: error instanceof Error ? error.message : String(error) });
       } else {
         res.end();
       }

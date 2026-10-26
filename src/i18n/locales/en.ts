@@ -365,6 +365,7 @@ export default {
     "aiThemeUpdated": "AI theme updated: {{themeName}}",
     "themeGenerationFailed": "Theme generation failed.",
     "coverThemeApplied": "Applied a cover-derived theme: {{themeName}}",
+    "cloudThemeApplied": "Applied a theme from the cloud cache: {{themeName}}",
     "aiFallbackThemeUsed": "AI is not configured, using a built-in theme",
     "playbackError": "Playback Error",
     "loadingSong": "Loading song URL...",

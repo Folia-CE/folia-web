@@ -367,9 +367,17 @@ async function handlePlatformBackend(req, res, url, prefix, base) {
   }
 
   res.statusCode = upstream.status;
+  // ⚠️ `Set-Cookie` 必须单独取。Node 的 Headers 在 forEach 里会把多个 Set-Cookie 用
+  // 「, 」拼成一条，而 cookie 的 Expires 里本来就有逗号 —— 拼完浏览器要么整条丢弃、
+  // 要么只认出第一个，于是「扫码确认成功、会话却存不下来」，后续请求全变成匿名：
+  // QQ 只给试听地址、酷狗直接不给地址。用 getSetCookie() 拿到数组原样写回。
+  const setCookies = typeof upstream.headers.getSetCookie === 'function' ? upstream.headers.getSetCookie() : [];
   upstream.headers.forEach((value, name) => {
-    if (!HOP_BY_HOP.has(name.toLowerCase())) res.setHeader(name, value);
+    const lower = name.toLowerCase();
+    if (lower === 'set-cookie') return;
+    if (!HOP_BY_HOP.has(lower)) res.setHeader(name, value);
   });
+  if (setCookies.length) res.setHeader('set-cookie', setCookies);
   if (!upstream.body) {
     res.end();
     return;

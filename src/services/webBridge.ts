@@ -134,6 +134,24 @@ type BridgePayload = {
     params?: Record<string, string | number | boolean | undefined>;
     body?: unknown;
     headers?: Record<string, string>;
+    /**
+     * 这次请求要用的会话（Cookie 头字符串）。
+     *
+     * 桥那边的会话只活在它自己的进程内存里（`server/static-server.mjs` 的 cookie 罐与
+     * `chrome.storage.local` 垫片），进程一重启就没了。会话的正本因此放在页面里：谁要桥
+     * 认得自己是登录的，就在每次请求上带一份（各家 transport 里读 localStorage 的那几行）。
+     * 桥只把这一份用在这一条请求上，不跨请求保留；答复里交回来的那份在 `__foliaBridgeSession`。
+     */
+    sessionCookies?: string;
+};
+
+/** 答复里会话的字段，与 `src/webBridge/api/folia.js` 的 `__foliaBridgeSession` 一致。 */
+export type BridgeSessionPayload = { provider?: string; cookies?: string };
+
+/** 从一次桥答复里取出会话（没有就返回空串）。凭据的值不进日志。 */
+export const readBridgeSession = (answer: unknown): string => {
+    const session = (answer as { __foliaBridgeSession?: BridgeSessionPayload } | null | undefined)?.__foliaBridgeSession;
+    return typeof session?.cookies === 'string' ? session.cookies.trim() : '';
 };
 
 /**
@@ -141,6 +159,10 @@ type BridgePayload = {
  *
  * 答复就是接口代码自己的返回值（上游 JSON），错误以 `__foliaBridgeError` 的形式回来 ——
  * 和 Android 桥、桌面桥的形状一致，好让上层的 transport 只有一套分支。
+ *
+ * 会话（cookie）跟着请求走：调用方把页面存着的那份放进 `sessionCookies`，答复里交回来的那份
+ * 在 `__foliaBridgeSession`（用 `readBridgeSession` 取）。这里不碰 localStorage —— 每个平台的
+ * 会话存哪个键、什么时候覆盖，是那家自己的规则。
  */
 export const requestWebBridge = async <T = unknown>(payload: BridgePayload): Promise<T> => {
     const response = await fetch(BRIDGE_ROUTE, {

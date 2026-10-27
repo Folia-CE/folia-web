@@ -54,6 +54,93 @@ const BRIDGE_COOKIE_STORAGE_KEYS = {
   kg: 'foliaBridgeKgCookie',
 };
 
+/** 桥对外的 provider 名 → 上面那张表的内部名（酷狗在表里叫 `kg`）。 */
+const BRIDGE_PROVIDER_STORAGE_IDS = {
+  netease: 'netease',
+  qq: 'qq',
+  kugou: 'kg',
+};
+
+/**
+ * 请求带来的会话：页面 localStorage 里的那一份。
+ *
+ * 在这之前，会话只活在**这个桥进程的内存里** —— `chrome.cookies` 罐加 `chrome.storage.local`
+ * 垫片，进程一重启（`pm2 restart`）就全没了；页面侧除了扫码确认那一次（803），再没有把会话
+ * 交回来的通道。于是桥重启后页面明明还存着会话，桥却一律当游客：播放地址、歌单、账号信息
+ * 全都退回未登录的形状。
+ *
+ * 现在会话的所有者是页面：每次请求把那份会话带进来（请求里的 `sessionCookies`），
+ * 处理这次请求期间它**优先**于罐里那份（`readStoredProviderCookie` 先看这里），
+ * 答复里再把最新的会话交回页面（`__foliaBridgeSession`，见 folia.js）。
+ *
+ * 这张表只在一次请求里有效，请求结束就清掉（`dropRequestSession`）—— 跨请求的持久化由页面
+ * 负责，这个进程不再假装自己记得谁登录过。请求没带会话时行为与以前完全一样。
+ */
+const requestSessions = new Map();
+
+/** 把客户端带来的一串 / 一组 / 一个对象归一成 `name=value; name=value`。 */
+function cookieHeaderFromClient(value) {
+  if (typeof value === 'string') return value.trim();
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => {
+        const name = item && item.name;
+        const itemValue = normalizeCookieValue(item);
+        return name && itemValue ? `${name}=${itemValue}` : '';
+      })
+      .filter(Boolean)
+      .join('; ');
+  }
+  if (value && typeof value === 'object') {
+    return Object.entries(value)
+      .map(([name, itemValue]) => {
+        const normalized = normalizeCookieValue(itemValue);
+        return name && normalized ? `${name}=${normalized}` : '';
+      })
+      .filter(Boolean)
+      .join('; ');
+  }
+  return '';
+}
+
+/**
+ * 请求开始时收下客户端带来的会话。
+ *
+ * `provider` 用桥对外的名字（`qq` / `netease` / `kugou`）；`cookies` 可以是 Cookie 头字符串、
+ * `[{ name, value }]`，或者 `{ name: value }`。空值不覆盖已有的那份 —— 请求没带不等于要把
+ * 会话清掉。认不出 provider 时什么都不做（`bodian` 这类没有会话的）。
+ */
+export function adoptRequestSession(provider, cookies) {
+  const storageProvider = BRIDGE_PROVIDER_STORAGE_IDS[String(provider || '').toLowerCase()];
+  const header = cookieHeaderFromClient(cookies);
+  if (!storageProvider || !header) return '';
+  requestSessions.set(storageProvider, header);
+  clearCookieCache();
+  return header;
+}
+
+/** 请求结束：会话不留在进程里，下一份从下一个请求来。 */
+export function dropRequestSession() {
+  if (!requestSessions.size) return;
+  requestSessions.clear();
+  clearCookieCache();
+}
+
+/**
+ * 这次请求手里那份会话：客户端带来的（优先），或这个进程存着的那份。
+ *
+ * 注意这里**只读会话**，不并 cookie 罐里那些搬运 cookie（ptcz / RK / qrsig 之类）。答复里交给
+ * 页面的就是它：页面存的是「登录凭据」这件事，不是这个进程的罐。罐里的东西留在桥这边合并，
+ * 未登录时也就不会拿一串搬运 cookie 把页面存的会话顶掉（那会让页面以为自己是登录的）。
+ */
+export async function currentProviderSession(provider) {
+  const storageProvider = BRIDGE_PROVIDER_STORAGE_IDS[String(provider || '').toLowerCase()];
+  if (!storageProvider) return '';
+  const carried = requestSessions.get(storageProvider);
+  if (carried) return carried;
+  return await readStoredProviderCookie(storageProvider);
+}
+
 function persistentCookieExpirationDate() {
   return Math.floor(Date.now() / 1000) + PERSISTENT_COOKIE_MAX_AGE_SEC;
 }
@@ -126,6 +213,13 @@ export async function saveProviderCookie(provider, cookieHeader) {
             .filter(Boolean)
             .join('; ')
         : '';
+  // 这次请求带着会话时，刚写入的凭据要并进那一份：答复里的 `__foliaBridgeSession` 读的就是它
+  // （扫码确认 803 换票拿到的 cookie 走这条），页面据此覆盖 localStorage，下一次请求才不会把
+  // 旧会话又送回来。
+  if (cookie && requestSessions.has(provider)) {
+    requestSessions.set(provider, mergeCookieHeaders(requestSessions.get(provider), cookie));
+    clearCookieCache();
+  }
   if (!storageKey || !cookie || !chrome.storage?.local) return;
   try {
     const current = await chrome.storage.local.get([storageKey]);
@@ -136,6 +230,10 @@ export async function saveProviderCookie(provider, cookieHeader) {
 }
 
 async function readStoredProviderCookie(provider) {
+  // 客户端带来的那份优先：它才是页面那边真正登录的会话。罐里 / 垫片里那份只是同一个进程
+  // 之前某次请求留下的影子，桥重启后就没人有了（见 adoptRequestSession）。
+  const carried = requestSessions.get(provider);
+  if (carried) return carried;
   const storageKey = BRIDGE_COOKIE_STORAGE_KEYS[provider];
   if (!storageKey || !chrome.storage?.local) return '';
   try {

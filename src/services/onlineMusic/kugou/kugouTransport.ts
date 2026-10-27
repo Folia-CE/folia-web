@@ -467,12 +467,17 @@ export const requestKugou = async <T = unknown>(operation: KugouOperation, param
     // 交给那个服务端内置的接口代码（src/webBridge/api/kugou.js），不需要自建 KuGouMusicApi。
     // 桌面端走上面的 IPC，静态托管在别处时探测失败，退回下面「需要配置后端」的老路。
     if (!base && await isWebBridgeAvailable()) {
+        // 桥的罐只在它自己的进程里（`pm2 restart` 就没了），所以每次请求都把页面存着的那份会话
+        // 带上；桥这一请求期间优先用它（`src/webBridge/api/folia.js` → cookies.js 的
+        // adoptRequestSession）。答复里的会话照旧由 persistWebSession 收。
+        const carried = readProviderSessionValue('kugou', 'cookie');
         try {
             const bridged = await requestWebBridge<any>({
                 provider: 'kugou',
                 operation,
                 method: 'GET',
                 params,
+                ...(carried ? { sessionCookies: carried } : {}),
             });
             if (bridged?.__foliaBridgeError) {
                 if (bridged.__foliaBridgeError === 'AUTH_REQUIRED') {

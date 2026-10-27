@@ -6,6 +6,9 @@ import { weapiRequest, UA } from './weapi.js';
 import { registerAnonymousCookie } from './netease/anonimous.js';
 import { noteLibraryStep, describePayload } from './libraryTrace.js';
 import {
+  adoptRequestSession,
+  currentProviderSession,
+  dropRequestSession,
   getNeteaseCookie,
   hasNeteaseLogin,
   parseCookieString,
@@ -1521,7 +1524,58 @@ async function handleFoliaKugouRequest(input, url) {
   };
 }
 
+/** 请求属于哪一家的会话：桥对外的 provider 名，`bodian` 这类没有会话的答空串。 */
+function sessionProviderOf(input) {
+  const provider = String(input?.provider || '').trim().toLowerCase();
+  if (!provider || provider === 'netease') return 'netease';
+  if (provider === 'qq' || provider === 'qq_raw') return 'qq';
+  if (provider === 'kugou' || provider === 'kg') return 'kugou';
+  return '';
+}
+
+/**
+ * 把会话随答复交回页面。
+ *
+ * 网页版的桥原先自己揣着会话：罐（`chrome.cookies` 垫片）加 `chrome.storage.local` 垫片都在
+ * 这个进程的内存里，`pm2 restart` 之后页面就再也认不回自己的登录态。现在会话跟着请求走 ——
+ * 答复里带上这次请求之后该 provider 的会话（`__foliaBridgeSession`），页面把它覆盖进
+ * localStorage，下一次请求再带回来（`sessionCookies`，见 cookies.js 的 adoptRequestSession）。
+ *
+ * 只交会话本身，不交罐里的搬运 cookie（ptcz / RK / qrsig 这些）：页面存的是「这份登录凭据」，
+ * 未登录时答复里干脆没有这个字段，免得一串匿名 cookie 把页面存着的登录态冲掉。
+ * 读不出、或者答的不是对象（数组、标量）时原样返回。
+ */
+async function withBridgeSession(provider, result) {
+  if (!provider || !result || typeof result !== 'object' || Array.isArray(result)) return result;
+  let cookies = '';
+  try {
+    cookies = String((await currentProviderSession(provider)) || '').trim();
+  } catch (_) {
+    cookies = '';
+  }
+  if (!cookies) return result;
+  return { ...result, __foliaBridgeSession: { provider, cookies } };
+}
+
+/**
+ * 桥的入口。
+ *
+ * 请求里的 `sessionCookies`（Cookie 头字符串，或 `[{ name, value }]`，或 `{ name: value }`）
+ * 在这次请求期间优先于罐里那份；答复里的 `__foliaBridgeSession` 是这次请求之后该 provider
+ * 的会话，页面据此覆盖 localStorage。请求没带会话时，行为与以前完全一样：读罐里与
+ * `chrome.storage.local` 里那份。
+ */
 export async function handleFoliaApiRequest(input) {
+  const provider = sessionProviderOf(input);
+  adoptRequestSession(provider, firstValue(input?.sessionCookies, input?.session?.cookies));
+  try {
+    return await withBridgeSession(provider, await dispatchFoliaApiRequest(input));
+  } finally {
+    dropRequestSession();
+  }
+}
+
+async function dispatchFoliaApiRequest(input) {
   const { url, body, method } = parseInput(input);
   if (input?.provider === 'bodian') {
     return await handleBodianRequest(String(input.operation || ''), input.params || body || {});

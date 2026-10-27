@@ -1064,21 +1064,43 @@ describe('QQ Music through the page-level web bridge', () => {
     // 803 是唯一带会话的扫码状态。桥在它上面把 cookie 罐里那份交回来（folia.js 的 login_qr_check），
     // transport 要照后端那条路一样存下 —— 否则紧接着的读账号（qqProvider 的 getLoginStatus）会因为
     // 「页面没有会话」直接跳过登录态请求，诊断里只剩 `backend session stored=no`。
-    it('stores the session the bridge hands back on 803, and never sends it back to the bridge', async () => {
+    //
+    // 会话的正本在页面这一侧：桥的罐只在它自己的进程里（pm2 restart 就空了），所以下一次请求要把
+    // 存着的这份送回去（sessionCookies），桥重启后才认得出这是谁。答复里的 `__foliaBridgeSession`
+    // 是「这次请求之后」的整份会话（凭据 + 桥罐里的搬运 cookie），比 803 的 cookie 更全，存它。
+    it('stores the session the bridge hands back on 803, and carries it on the next request', async () => {
+        const BRIDGE_SESSION = `${BRIDGE_COOKIE}; ptcz=transport`;
         const fetchMock = bridgeServing(payload => (payload.operation === 'login_qr_check'
-            ? { code: 803, message: 'Login successful', cookie: BRIDGE_COOKIE }
+            ? {
+                code: 803,
+                message: 'Login successful',
+                cookie: BRIDGE_COOKIE,
+                __foliaBridgeSession: { provider: 'qq', cookies: BRIDGE_SESSION },
+            }
             : { code: 200, data: { profile: { musicid: 123 } } }));
         vi.stubGlobal('fetch', fetchMock);
         const { hasQqSession, requestQq } = await import('@/services/onlineMusic/qq/qqTransport');
 
         await expect(requestQq('login_qr_check', { key: 'bridge-key' })).resolves.toMatchObject({ code: 803 });
 
-        expect(storage.get('online_provider:qq:cookie')).toBe(BRIDGE_COOKIE);
+        expect(storage.get('online_provider:qq:cookie')).toBe(BRIDGE_SESSION);
         expect(hasQqSession()).toBe(true);
 
-        // 会话在桥的罐里，页面存下的这份只是「这一轮登录过了」的记号：不跟着请求过去，也不进日志。
         await requestQq('login_status');
-        expect(JSON.stringify(sent(fetchMock))).not.toContain('bridge-token');
+        expect(sent(fetchMock).at(-1)).toMatchObject({ sessionCookies: BRIDGE_SESSION });
+    });
+
+    // 桥没给会话（未登录、或者答的是空罐）时不动页面存着的那份：一次匿名请求不能把登录态冲掉。
+    it('leaves the stored session alone when the bridge hands none back', async () => {
+        storage.set('online_provider:qq:cookie', BRIDGE_COOKIE);
+        const fetchMock = bridgeServing(() => ({ code: 200, data: { profile: { musicid: 123 } } }));
+        vi.stubGlobal('fetch', fetchMock);
+        const { requestQq } = await import('@/services/onlineMusic/qq/qqTransport');
+
+        await requestQq('login_status');
+
+        expect(storage.get('online_provider:qq:cookie')).toBe(BRIDGE_COOKIE);
+        expect(sent(fetchMock).at(-1)).toMatchObject({ sessionCookies: BRIDGE_COOKIE });
     });
 
     // 桥没实现的那几条（login_refresh 是 Serverless 换 token 用的，桥的会话就是 cookie 本身）和

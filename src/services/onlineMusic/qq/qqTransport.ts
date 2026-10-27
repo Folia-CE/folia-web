@@ -3,7 +3,7 @@ import { readProviderSessionValue, removeProviderSessionValue, writeProviderSess
 import { LoginRequestTimeout, withLoginRequestLimit } from '../login/loginRequestLimit';
 import { withOnlineRequestLimit } from '../failure/onlineRequestLimit';
 import { lyricProxyWebUrl } from '../../lyricProxy';
-import { isWebBridgeAvailable, isWebBridgeAvailableSync, requestWebBridge } from '../../webBridge';
+import { isWebBridgeAvailable, isWebBridgeAvailableSync, readBridgeSession, requestWebBridge } from '../../webBridge';
 import { errorMessage } from '../../../utils/errorText';
 
 // src/services/onlineMusic/qq/qqTransport.ts
@@ -330,6 +330,19 @@ const persistConfirmedSession = (operation: QqOperation, body: any): void => {
 };
 
 /**
+ * 桥每次答复都带着「这次请求之后」的会话（`__foliaBridgeSession`，见
+ * `src/webBridge/api/folia.js` 的 withBridgeSession）：页面用这份覆盖 localStorage 里存着的会话。
+ *
+ * 桥那边的罐与 storage 垫片都在进程内存里，`pm2 restart` 之后就空了；页面这份是唯一的正本，
+ * 每次请求带回去（requestQqWebBridge 的 sessionCookies），桥才认得出这是谁 —— 少了它，
+ * 重启一次播放地址和歌单就都退回游客。
+ */
+const persistBridgeSession = (answer: unknown): void => {
+    const cookies = readBridgeSession(answer);
+    if (cookies) writeProviderSessionValue('qq', 'cookie', cookies);
+};
+
+/**
  * 一条路（内嵌后端、自建后端、网页版同源桥）回来的答案都按同一套收尾：曲库路由被上游拒收时当错误，
  * 扫码确认（803）带回来的会话存进页面。桥在 803 上也把会话交回来（src/webBridge/api/folia.js 的
  * login_qr_check 读它自己的 cookie 罐拼一份），所以两条路在这里不分岔 —— 少了这一步，页面里就没有会话，
@@ -428,6 +441,10 @@ const checkSessionAfterRefusal = (sent: string): void => {
  * `key`（create/check/cancel）—— qrsig / ptqrtoken 不出页面，桥在 `login_qr_key` 回的 unikey 里把它们编成
  * 一个不透明串，check 时再解出来。
  *
+ * `sessionCookies` 是页面存着的那份会话（`online_provider:qq:cookie`）。桥的罐只在它自己的进程里
+ * （`pm2 restart` 就没了），所以每次请求都得把这份带上 —— 少了它，桥重启之后页面明明还登录着，
+ * 取播放地址与歌单也会被当成游客。
+ *
  * 时限与后端那条路一致：登录的三步与要歌地址、读集合的请求都到自己那一刻为止，桥挂住时不能让登录窗口
  * 一直转圈（桥的 fetch 不收 signal，到点只是不再等它，和主进程那座 IPC 桥一样）。
  */
@@ -435,6 +452,7 @@ const requestQqWebBridge = async (
     operation: QqOperation,
     endpoint: { path: string; query: QqParams },
     isPost: boolean,
+    session: string,
     payload?: Record<string, unknown>,
 ): Promise<any> => {
     const send = async (): Promise<any> => {
@@ -444,6 +462,7 @@ const requestQqWebBridge = async (
             method: isPost ? 'POST' : 'GET',
             path: endpoint.path,
             params: endpoint.query,
+            ...(session ? { sessionCookies: session } : {}),
             ...(payload === undefined ? {} : { body: payload }),
         });
         if (bridged?.__foliaBridgeError) {
@@ -495,12 +514,16 @@ export const requestQq = async <T = unknown>(
     // 也不会有 CORS 问题。桌面端有内嵌后端，不走这里；静态托管在别处（没有那个服务）时
     // 探测失败，退回下面「需要配置后端」的老路。
     if (webBridgeCarriesQq() && await isWebBridgeAvailable()) {
-        const bridged = await requestQqWebBridge(operation, endpoint, isPost, payload);
+        const bridged = await requestQqWebBridge(operation, endpoint, isPost, cookie, payload);
         if (bridged === undefined) {
             throw new OnlineProviderError('invalid-response', `Folia bridge returned an unreadable ${operation} body`, 'qq');
         }
         // 会话与曲库的判定和后端那条路完全一样：桥在 803 上也把会话交回来，这里同样存下。
         settleAnswer(operation, bridged);
+        // 桥把「这次请求之后」的会话也交回来了（`__foliaBridgeSession`）。它比 803 那份更全：
+        // 换票拿到的凭据加上桥罐里的搬运 cookie（ptcz / RK 之类）。页面上存着的正本用它覆盖，
+        // 下一次请求再带回去 —— 桥重启后认得出这是谁，靠的就是这份。
+        persistBridgeSession(bridged);
         return bridged as T;
     }
 

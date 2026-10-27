@@ -1002,3 +1002,137 @@ describe('QQ musicu requests', () => {
         expect(error?.message).toContain('500000');
     });
 });
+
+// 纯静态网页（没有 VITE_QQ_API_BASE，也没有桌面版的内嵌后端）：QQ 的接口交给 server/static-server.mjs
+// 发出来的同源桥（src/webBridge/api/folia.js 的 routeFoliaQqRequest）。这里按那个文件实际认的形状
+// （parseInput / mergeOperationParams）核对每一次调用，而不是照 transport 自己的想象。
+describe('QQ Music through the page-level web bridge', () => {
+    const BRIDGE = '/api/__folia_bridge';
+    // 桥自己 cookie 罐里的那份会话：登录成功时它把整串 cookie 交回来（而不是后端的 opaque token）。
+    const BRIDGE_COOKIE = 'uin=o0123; qm_keyst=bridge-token';
+
+    // 探测是 GET /api/__folia_bridge；之后每个请求都是 POST 一个 { provider, operation, ... }。
+    const bridgeServing = (answer: (payload: any) => unknown, ready = true) => vi.fn(
+        async (input: RequestInfo | URL, init?: RequestInit) => {
+            if (String(input) !== BRIDGE) throw new Error(`unexpected target ${String(input)}`);
+            if ((init?.method || 'GET') === 'GET') return ready ? Response.json({ ok: true, ready }) : new Response('', { status: 404 });
+            return Response.json(answer(JSON.parse(String(init?.body))));
+        },
+    );
+    const sent = (fetchMock: ReturnType<typeof vi.fn>) => fetchMock.mock.calls
+        .filter(([, init]) => init?.method === 'POST')
+        .map(([, init]) => JSON.parse(String(init?.body)));
+
+    beforeEach(() => {
+        vi.resetModules();
+        storage.clear();
+        vi.stubEnv('VITE_QQ_API_BASE', '');
+        vi.stubGlobal('localStorage', {
+            getItem: (key: string) => storage.get(key) ?? null,
+            setItem: (key: string, value: string) => storage.set(key, value),
+            removeItem: (key: string) => storage.delete(key),
+        });
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+        vi.restoreAllMocks();
+        vi.unstubAllGlobals();
+        vi.unstubAllEnvs();
+    });
+
+    // 操作名与 ENDPOINTS 的键是同一套：桥按同名的分支走，所以原样透传，不减不改。
+    it('counts as configured and posts the login steps in the shape the bridge reads', async () => {
+        const fetchMock = bridgeServing(() => ({ code: 200, data: { code: 200, unikey: 'bridge-key' } }));
+        vi.stubGlobal('fetch', fetchMock);
+        const { getQqTransportAvailability, qqSignInLivesInBridge, requestQq } = await import('@/services/onlineMusic/qq/qqTransport');
+
+        await expect(requestQq('login_qr_key', { channel: 'qq' })).resolves.toEqual({ code: 200, data: { code: 200, unikey: 'bridge-key' } });
+        await requestQq('login_qr_create', { key: 'bridge-key' });
+
+        expect(sent(fetchMock)).toEqual([
+            { provider: 'qq', operation: 'login_qr_key', method: 'GET', path: '/login/qr/key', params: { channel: 'qq' } },
+            { provider: 'qq', operation: 'login_qr_create', method: 'GET', path: '/login/qr/create', params: { key: 'bridge-key' } },
+        ]);
+        // 探测回来之后可用性才算数（同步的那份要等探测；这条路上的第一次请求已经等过它）。
+        expect(getQqTransportAvailability()).toEqual({ configured: true });
+        expect(await qqSignInLivesInBridge()).toBe(true);
+        // 同源桥要带上浏览器拿到的 cookie（部署保护、桥自己的罐），否则登录态接不上。
+        expect(fetchMock.mock.calls.at(-1)?.[1]).toMatchObject({ method: 'POST', credentials: 'include' });
+    });
+
+    // 803 是唯一带会话的扫码状态。桥在它上面把 cookie 罐里那份交回来（folia.js 的 login_qr_check），
+    // transport 要照后端那条路一样存下 —— 否则紧接着的读账号（qqProvider 的 getLoginStatus）会因为
+    // 「页面没有会话」直接跳过登录态请求，诊断里只剩 `backend session stored=no`。
+    it('stores the session the bridge hands back on 803, and never sends it back to the bridge', async () => {
+        const fetchMock = bridgeServing(payload => (payload.operation === 'login_qr_check'
+            ? { code: 803, message: 'Login successful', cookie: BRIDGE_COOKIE }
+            : { code: 200, data: { profile: { musicid: 123 } } }));
+        vi.stubGlobal('fetch', fetchMock);
+        const { hasQqSession, requestQq } = await import('@/services/onlineMusic/qq/qqTransport');
+
+        await expect(requestQq('login_qr_check', { key: 'bridge-key' })).resolves.toMatchObject({ code: 803 });
+
+        expect(storage.get('online_provider:qq:cookie')).toBe(BRIDGE_COOKIE);
+        expect(hasQqSession()).toBe(true);
+
+        // 会话在桥的罐里，页面存下的这份只是「这一轮登录过了」的记号：不跟着请求过去，也不进日志。
+        await requestQq('login_status');
+        expect(JSON.stringify(sent(fetchMock))).not.toContain('bridge-token');
+    });
+
+    // 桥没实现的那几条（login_refresh 是 Serverless 换 token 用的，桥的会话就是 cookie 本身）和
+    // 凭据失效的 AUTH_REQUIRED 都要报成原来那两种码，调用方才能回落到老路或提示重登。
+    it('keeps the bridge refusals in the codes the callers already read', async () => {
+        const fetchMock = bridgeServing(payload => (payload.operation === 'user_playlist'
+            ? { __foliaBridgeError: 'AUTH_REQUIRED', message: 'QQ login required' }
+            : { __foliaBridgeError: 'UNSUPPORTED', provider: 'qq', operation: payload.operation, message: `no ${payload.operation}` }));
+        vi.stubGlobal('fetch', fetchMock);
+        const { requestQq } = await import('@/services/onlineMusic/qq/qqTransport');
+
+        // login_refresh 是写入路由（POST_OPERATIONS），要带正文才发得出去。
+        await expect(requestQq('login_refresh', {}, {})).rejects.toMatchObject({ code: 'unsupported', providerId: 'qq' });
+        await expect(requestQq('user_playlist')).rejects.toMatchObject({ code: 'auth-required', providerId: 'qq' });
+    });
+
+    // 写入路由的正文放在 body 里，桥把它并进 params（mergeOperationParams），方法照 POST_OPERATIONS 走。
+    it('carries a write request body in the payload the bridge merges into its params', async () => {
+        const fetchMock = bridgeServing(() => ({ code: 200, changed: true }));
+        vi.stubGlobal('fetch', fetchMock);
+        const { requestQq } = await import('@/services/onlineMusic/qq/qqTransport');
+
+        await expect(requestQq('user_playlist_tracks', {}, { tid: '70001', op: 'add', songs: [] })).resolves.toEqual({ code: 200, changed: true });
+
+        expect(sent(fetchMock)).toEqual([{
+            provider: 'qq',
+            operation: 'user_playlist_tracks',
+            method: 'POST',
+            path: '/user/playlist/tracks',
+            params: {},
+            body: { tid: '70001', op: 'add', songs: [] },
+        }]);
+    });
+
+    // 登录窗口靠请求自己的时限收手：桥挂住时窗口不能一直转圈（与后端那条路同一个限度）。
+    it('limits a bridge request the way it limits a backend request', async () => {
+        let settled: unknown = 'pending';
+        const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => (
+            (init?.method || 'GET') === 'GET'
+                ? Response.json({ ok: true })
+                : new Promise<Response>(() => undefined)
+        ));
+        vi.stubGlobal('fetch', fetchMock);
+        const { isWebBridgeAvailable } = await import('@/services/webBridge');
+        expect(await isWebBridgeAvailable()).toBe(true);
+        const { requestQq } = await import('@/services/onlineMusic/qq/qqTransport');
+        const { LoginRequestTimeout } = await import('@/services/onlineMusic/login/loginRequestLimit');
+
+        vi.useFakeTimers();
+        void requestQq('login_qr_key').catch((error: unknown) => { settled = error; });
+        await vi.advanceTimersByTimeAsync(19_999);
+        expect(settled).toBe('pending');
+        await vi.advanceTimersByTimeAsync(1);
+
+        expect(settled).toBeInstanceOf(LoginRequestTimeout);
+    });
+});

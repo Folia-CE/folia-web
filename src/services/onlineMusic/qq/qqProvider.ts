@@ -19,7 +19,7 @@ import { toSafePlaybackUrl } from '../../../utils/appPlaybackHelpers';
 import { fetchQQLyrics } from './qqLyricProvider';
 import { writeProviderSessionValue } from '../providerStorage';
 import { normalizeQqCollection, normalizeQqSong, normalizeQqUser } from './qqNormalize';
-import { clearQqSession, getQqRemoteApiBase, getQqTransportAvailability, hasQqSession, hasUsableQqSession, isQqSessionParked, requestQq } from './qqTransport';
+import { clearQqSession, getQqRemoteApiBase, getQqTransportAvailability, hasQqSession, hasUsableQqSession, isQqSessionParked, qqSignInLivesInBridge, requestQq } from './qqTransport';
 import { canRunLoginSelfCheck, runLoginSelfCheck } from '../loginSelfCheck';
 import { diagnosticLine, formatDiagnosticClock } from '../login/loginDiagnosticReport';
 import { collectQqLoginDiagnostics } from './qqLoginDiagnostics';
@@ -543,7 +543,10 @@ const getLoginStatus = async (): Promise<ProviderUser | null> => {
 // page at once, before the first wait and whatever the backend answers.
 const logout = async (): Promise<void> => {
     stopQqSessionRefresh();
-    const told = hasQqSession()
+    // 网页版没有页面会话也可能该退：会话是同源桥自己拿着的（它有自己的 cookie 罐），页面这边一份都没有的
+    // 情况真的存在 —— 换了浏览器配置、隐私模式重开、localStorage 被清。那时不告诉它，罐里的平台凭据就留着，
+    // 下一次扫码登录会把旧凭据当成自己的拼出一个用不了的会话（src/webBridge/api/folia.js 的 logout 注释）。
+    const told = hasQqSession() || await qqSignInLivesInBridge()
         ? requestQq('logout').catch(error => {
             console.warn('[QQProvider] logout:error', error);
         })

@@ -1,6 +1,6 @@
 import { OnlineProviderError } from '../../../types/onlineMusic';
 import { readProviderSessionValue, removeProviderSessionValue, writeProviderSessionValue } from '../providerStorage';
-import { withLoginRequestLimit } from '../login/loginRequestLimit';
+import { LoginRequestTimeout, withLoginRequestLimit } from '../login/loginRequestLimit';
 import { withOnlineRequestLimit } from '../failure/onlineRequestLimit';
 import { lyricProxyWebUrl } from '../../lyricProxy';
 import { isWebBridgeAvailable, isWebBridgeAvailableSync, requestWebBridge } from '../../webBridge';
@@ -329,8 +329,32 @@ const persistConfirmedSession = (operation: QqOperation, body: any): void => {
     if (typeof cookie === 'string' && cookie) writeProviderSessionValue('qq', 'cookie', cookie);
 };
 
+/**
+ * 一条路（内嵌后端、自建后端、网页版同源桥）回来的答案都按同一套收尾：曲库路由被上游拒收时当错误，
+ * 扫码确认（803）带回来的会话存进页面。桥在 803 上也把会话交回来（src/webBridge/api/folia.js 的
+ * login_qr_check 读它自己的 cookie 罐拼一份），所以两条路在这里不分岔 —— 少了这一步，页面里就没有会话，
+ * 紧接着的读账号（qqProvider 的 getLoginStatus）会当成「没人登录」直接跳过登录态请求，诊断里只剩
+ * `session: backend session stored=no`，随后 signInRanOut 把会话一起清掉。
+ */
+const settleAnswer = (operation: QqOperation, body: any): void => {
+    assertUpstreamAccepted(operation, body);
+    persistConfirmedSession(operation, body);
+};
+
 /** 网页版配置的远端 API 地址（自检与诊断报告用）；桌面版走内嵌后端，返回 null。 */
 export const getQqRemoteApiBase = (): string | null => (getElectronQqPortReader() ? null : getWebApiBase() || null);
+
+/**
+ * 这个页面是不是「没有自建后端、由同源桥代劳」的形态：桌面版有内嵌后端，配了 VITE_QQ_API_BASE 的有自己的后端，
+ * 两者都不是时才该去探桥。桥到底在不在由探测说（静态托管在别处时探不到，那时照旧是「没配置」）。
+ */
+const webBridgeCarriesQq = (): boolean => !getElectronQqPortReader() && !getWebApiBase();
+
+/**
+ * 这次运行里 QQ 的登录态是不是由同源桥自己拿着。桥有它自己的 cookie 罐（server/static-server.mjs 里的
+ * `document.cookie` 垫片），页面这边可能一份都没有 —— 退出登录这种要动凭据的动作据此决定还该不该告诉它。
+ */
+export const qqSignInLivesInBridge = async (): Promise<boolean> => webBridgeCarriesQq() && await isWebBridgeAvailable();
 
 export const getQqTransportAvailability = () => {
     if (getElectronQqPortReader()) return { configured: true } as const;
@@ -394,6 +418,56 @@ const checkSessionAfterRefusal = (sent: string): void => {
     });
 };
 
+/**
+ * 一次请求交给网页版的同源桥（`src/webBridge.ts` → `src/webBridge/api/folia.js` 的 `routeFoliaQqRequest`）。
+ *
+ * 桥认的形状照它的 parseInput / mergeOperationParams 写：`operation` 原样透传（桥按同名分支走，与上面
+ * ENDPOINTS 的键是同一套名字），`params` 是查询串那几样，`path` 带着路径里的标识（`music_play` 的 songmid、
+ * `song_info` 的 songmid/songid、`song_list_detail` 的 disstid 都在路径段里，桥拿不到 params 时用最后一段），
+ * 写入路由的 JSON 正文放 `body`（桥把它并进 params）。登录那几步的参数只有 `channel`（login_qr_key）和
+ * `key`（create/check/cancel）—— qrsig / ptqrtoken 不出页面，桥在 `login_qr_key` 回的 unikey 里把它们编成
+ * 一个不透明串，check 时再解出来。
+ *
+ * 时限与后端那条路一致：登录的三步与要歌地址、读集合的请求都到自己那一刻为止，桥挂住时不能让登录窗口
+ * 一直转圈（桥的 fetch 不收 signal，到点只是不再等它，和主进程那座 IPC 桥一样）。
+ */
+const requestQqWebBridge = async (
+    operation: QqOperation,
+    endpoint: { path: string; query: QqParams },
+    isPost: boolean,
+    payload?: Record<string, unknown>,
+): Promise<any> => {
+    const send = async (): Promise<any> => {
+        const bridged = await requestWebBridge<any>({
+            provider: 'qq',
+            operation,
+            method: isPost ? 'POST' : 'GET',
+            path: endpoint.path,
+            params: endpoint.query,
+            ...(payload === undefined ? {} : { body: payload }),
+        });
+        if (bridged?.__foliaBridgeError) {
+            if (bridged.__foliaBridgeError === 'AUTH_REQUIRED') {
+                throw new OnlineProviderError('auth-required', bridged.message || 'QQMusicApi login required', 'qq', bridged);
+            }
+            if (bridged.__foliaBridgeError === 'UNSUPPORTED') {
+                throw new OnlineProviderError('unsupported', bridged.message || `QQMusicApi has no ${operation} route`, 'qq', bridged);
+            }
+            throw new OnlineProviderError('network', bridged.message || bridged.__foliaBridgeError, 'qq', bridged);
+        }
+        return bridged;
+    };
+    try {
+        return await (LOGIN_REQUESTS.has(operation) ? withLoginRequestLimit(send)
+            : ONLINE_REQUESTS.has(operation) ? withOnlineRequestLimit(send, QQ_ONLINE_REQUEST_LIMIT_MS) : send());
+    } catch (error) {
+        // 到点没有回答：LoginRequestTimeout 由登录的失败分类（login/loginFailureCase.ts）认成「没有回应」，
+        // 原样交出去；OnlineRequestTimeout 本身就是 network 的错。
+        if (error instanceof OnlineProviderError || error instanceof LoginRequestTimeout) throw error;
+        throw new OnlineProviderError('network', errorMessage(error), 'qq', error);
+    }
+};
+
 // Routes one provider request through the embedded Electron server or the configured Web base URL.
 // It carries the session as the page keeps it when the request is made, before the first wait.
 // 写入路由（POST_OPERATIONS）的参数放在 JSON 正文 `payload` 里；会话照旧走 header 或 `?cookie=`，后端两条路由都认。
@@ -417,32 +491,17 @@ export const requestQq = async <T = unknown>(
     const endpoint = endpointFor(operation, params);
 
     // 「本地登录」：网页版跑在 server/static-server.mjs 发出来的同源站点上时，QQ 的接口
-    // 交给那个服务端内置的接口代码（src/webBridge/api/qq.js），不需要自建 qq-music-api。
-    // 桌面端有内嵌后端，不走这里；静态托管在别处时探测失败，退回下面「需要配置后端」的老路。
-    if (!getElectronQqPortReader() && !getWebApiBase() && await isWebBridgeAvailable()) {
-        try {
-            const bridged = await requestWebBridge<any>({
-                provider: 'qq',
-                operation,
-                method: isPost ? 'POST' : 'GET',
-                path: endpoint.path,
-                params: endpoint.query,
-                ...(payload === undefined ? {} : { body: payload }),
-            });
-            if (bridged?.__foliaBridgeError) {
-                if (bridged.__foliaBridgeError === 'AUTH_REQUIRED') {
-                    throw new OnlineProviderError('auth-required', bridged.message || 'QQMusicApi login required', 'qq', bridged);
-                }
-                if (bridged.__foliaBridgeError === 'UNSUPPORTED') {
-                    throw new OnlineProviderError('unsupported', bridged.message || `QQMusicApi has no ${operation} route`, 'qq', bridged);
-                }
-                throw new OnlineProviderError('network', bridged.message || bridged.__foliaBridgeError, 'qq', bridged);
-            }
-            return bridged as T;
-        } catch (error) {
-            if (error instanceof OnlineProviderError) throw error;
-            throw new OnlineProviderError('network', error instanceof Error ? error.message : String(error), 'qq', error);
+    // 交给那个服务端内置的接口代码（src/webBridge/api/qq.js），不需要自建 qq-music-api，
+    // 也不会有 CORS 问题。桌面端有内嵌后端，不走这里；静态托管在别处（没有那个服务）时
+    // 探测失败，退回下面「需要配置后端」的老路。
+    if (webBridgeCarriesQq() && await isWebBridgeAvailable()) {
+        const bridged = await requestQqWebBridge(operation, endpoint, isPost, payload);
+        if (bridged === undefined) {
+            throw new OnlineProviderError('invalid-response', `Folia bridge returned an unreadable ${operation} body`, 'qq');
         }
+        // 会话与曲库的判定和后端那条路完全一样：桥在 803 上也把会话交回来，这里同样存下。
+        settleAnswer(operation, bridged);
+        return bridged as T;
     }
 
     const base = await resolveApiBase();
@@ -506,8 +565,7 @@ export const requestQq = async <T = unknown>(
     if (body === undefined) {
         throw new OnlineProviderError('invalid-response', `QQMusicApi returned an unreadable ${operation} body`, 'qq');
     }
-    assertUpstreamAccepted(operation, body);
-    persistConfirmedSession(operation, body);
+    settleAnswer(operation, body);
     return body as T;
 };
 

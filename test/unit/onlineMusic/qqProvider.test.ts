@@ -8,7 +8,7 @@ const clearSessionMock = vi.hoisted(() => vi.fn());
 const writeSessionValueMock = vi.hoisted(() => vi.fn());
 const searchQQSongsMock = vi.hoisted(() => vi.fn());
 const fetchQQLyricsMock = vi.hoisted(() => vi.fn());
-const transportState = vi.hoisted(() => ({ hasSession: true, parked: false }));
+const transportState = vi.hoisted(() => ({ hasSession: true, parked: false, livesInBridge: false }));
 
 vi.mock('@/services/onlineMusic/qq/qqTransport', async importOriginal => ({
     ...await importOriginal<typeof import('@/services/onlineMusic/qq/qqTransport')>(),
@@ -17,6 +17,8 @@ vi.mock('@/services/onlineMusic/qq/qqTransport', async importOriginal => ({
     hasQqSession: () => transportState.hasSession,
     hasUsableQqSession: () => transportState.hasSession,
     isQqSessionParked: async () => transportState.parked,
+    // 网页版的会话在桥那边（它有自己的 cookie 罐）：这里按用例说它有没有。
+    qqSignInLivesInBridge: async () => transportState.livesInBridge,
     clearQqSession: clearSessionMock,
     requestQq: requestMock,
     requestQqMusicu: musicuMock,
@@ -180,6 +182,7 @@ describe('qqProvider', () => {
         searchQQSongsMock.mockReset();
         fetchQQLyricsMock.mockReset();
         transportState.hasSession = true;
+        transportState.livesInBridge = false;
         resetQqProviderRuntimeCache();
     });
 
@@ -766,6 +769,19 @@ describe('qqProvider', () => {
         await qqProvider.auth!.logout();
         expect(requestMock).not.toHaveBeenCalled();
         expect(clearSessionMock).toHaveBeenCalledTimes(2);
+    });
+
+    // 网页版的会话整个在桥那边时页面一份都没有：不告诉它，罐里的平台凭据留着，下一次扫码会把旧凭据
+    // 当成自己的拼出一个用不了的会话。
+    it('tells the page-level bridge about a sign-out even when the page keeps no session', async () => {
+        transportState.hasSession = false;
+        transportState.livesInBridge = true;
+        requestMock.mockResolvedValue({ code: 200 });
+
+        await qqProvider.auth!.logout();
+
+        expect(requestMock).toHaveBeenCalledWith('logout');
+        expect(clearSessionMock).toHaveBeenCalledTimes(1);
     });
 
     // 网页上的单曲页按 songmid 定位，与网易云的 `getSongPageUrl` 同一份契约：拿不到 songmid 就不给链接。

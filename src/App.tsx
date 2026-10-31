@@ -28,6 +28,7 @@ import { useVisualizerAroundWall, wallExitCompleted, WALL_LAYER } from './compon
 import { useMorphKeepsHost } from './components/collectionFlight';
 import { UserGuideModal } from './components/modal/UserGuideModal';
 import ReleaseNotesDialog from './components/modal/ReleaseNotesDialog';
+import CanxuebanNotice from './components/app/notices/CanxuebanNotice';
 import FreeSoftwareNoticeModal from './components/modal/FreeSoftwareNoticeModal';
 import LegacyModelsPrompt from './components/modal/LegacyModelsPrompt';
 import { PlaybackEntryViewPrompt } from './components/modal/playback-entry-view/PlaybackEntryViewPrompt';
@@ -2959,6 +2960,7 @@ export default function App() {
                 isDaylight={isDaylight}
                 onClose={startupExperience.closeReleaseNotes}
             />
+            <CanxuebanNotice />
             <UserGuideModal theme={theme} />
             <PlaybackEntryViewPrompt theme={theme} />
             <LatticeFmNotice />

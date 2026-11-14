@@ -18,6 +18,23 @@
 const BRIDGE_ROUTE = '/api/__folia_bridge';
 
 /**
+ * 篡改猴中继（public/folia-bridge-relay.user.js）的通道。
+ *
+ * 服务器桥要走部署方自己的 Node 进程；中继不一样：用户装了脚本之后，请求从**用户自己的
+ * 浏览器**经 GM_xmlhttpRequest 直连上游 —— 跨域与带 Cookie 都不受同源策略限制（这正是
+ * 普通网页做不到、而脚本做得到的），更快，服务器零负担。
+ *
+ * 协议见脚本头注释：页面 postMessage 发 `{ type, id, payload }`，脚本回
+ * `{ type: '__folia_bridge_relay_result', id, answer }`；脚本就绪时先广播一条
+ * `__folia_bridge_relay_ready`。页面还主动 ping 一次，处理「脚本比页面晚装好」的情况。
+ */
+const RELAY_PAGE_ORIGIN = 'https://folia.tangbot.xyz';
+const RELAY_MESSAGE_TYPE = '__folia_bridge_relay';
+const RELAY_RESULT_TYPE = '__folia_bridge_relay_result';
+const RELAY_READY_TYPE = '__folia_bridge_relay_ready';
+const RELAY_TIMEOUT_MS = 5000;
+
+/**
  * 这个网页是不是被 `server/static-server.mjs` 发出来的。
  */
 let bridgeAvailable: boolean | null = null;
@@ -33,6 +50,9 @@ let bridgeAvailable: boolean | null = null;
 const isDesktopShell = (): boolean => (
     typeof window !== 'undefined' && Boolean((window as any).electron)
 );
+
+// 中继与下面的 isRelayUsable / startRelayListener 用到 isDesktopShell，它必须先声明
+// —— TypeScript 的 const 提升不到声明前，监听器在模块加载时挂上时会碰到它。
 
 /**
  * 探测结果的同步镜像。
@@ -148,6 +168,107 @@ type BridgePayload = {
 /** 答复里会话的字段，与 `src/webBridge/api/folia.js` 的 `__foliaBridgeSession` 一致。 */
 export type BridgeSessionPayload = { provider?: string; cookies?: string };
 
+/* ------------------------------------------------------------------ */
+/* 中继通道（篡改猴脚本）                                              */
+/* ------------------------------------------------------------------ */
+
+/** 中继握手成功与否。监听模块加载就开始，探测桥用的「第一次用才发」省不得：装没装脚本不碰网络。 */
+let relayReady = false;
+let relayListenerStarted = false;
+let relayReadyWaiters: Array<() => void> = [];
+
+/** 等待中的中继请求：id → 到点回落服务器桥的定时器与 resolve。 */
+const relayPending = new Map<string, { timer: ReturnType<typeof setTimeout>; resolve: (value: unknown) => void }>();
+
+const isPageOrigin = (): boolean => (
+    typeof window !== 'undefined' && window.location
+        ? window.location.origin === RELAY_PAGE_ORIGIN
+        : false
+);
+
+/** 中继只在这一个部署上工作（脚本 @match 与这里保持同一域名）。 */
+const isRelayUsable = (): boolean => (
+    !isDesktopShell() && typeof window !== 'undefined' && typeof window.postMessage === 'function' && isPageOrigin()
+);
+
+/** 等到握手成功（已在等的人被一起放行），最多 `timeoutMs`。 */
+const waitForRelayReady = (timeoutMs: number): Promise<boolean> => {
+    if (relayReady) return Promise.resolve(true);
+    if (!isRelayUsable()) return Promise.resolve(false);
+    return new Promise((resolve) => {
+        const timer = setTimeout(() => {
+            relayReadyWaiters = relayReadyWaiters.filter((waiter) => waiter !== onReady);
+            resolve(false);
+        }, timeoutMs);
+        const onReady = () => {
+            clearTimeout(timer);
+            resolve(true);
+        };
+        relayReadyWaiters.push(onReady);
+        // 主动 ping：脚本可能晚于页面加载（@run-at document-start 一般早，但不赌这个）。
+        try {
+            window.postMessage({ type: '__folia_bridge_relay_ping' }, RELAY_PAGE_ORIGIN);
+        } catch (_) {
+            clearTimeout(timer);
+            relayReadyWaiters = relayReadyWaiters.filter((waiter) => waiter !== onReady);
+            resolve(false);
+        }
+    });
+};
+
+const startRelayListener = (): void => {
+    if (relayListenerStarted || typeof window === 'undefined') return;
+    relayListenerStarted = true;
+    window.addEventListener('message', (event: MessageEvent) => {
+        if (event.origin !== RELAY_PAGE_ORIGIN) return;
+        const data = event.data as { type?: string; id?: string; answer?: unknown } | null;
+        if (!data) return;
+        if (data.type === RELAY_READY_TYPE || data.type === '__folia_bridge_relay_pong') {
+            relayReady = true;
+            const waiters = relayReadyWaiters;
+            relayReadyWaiters = [];
+            waiters.forEach((waiter) => waiter());
+            return;
+        }
+        if (data.type !== RELAY_RESULT_TYPE || typeof data.id !== 'string') return;
+        const pending = relayPending.get(data.id);
+        if (!pending) return;
+        relayPending.delete(data.id);
+        clearTimeout(pending.timer);
+        pending.resolve(data.answer);
+    });
+};
+
+// 监听器在模块加载时挂上：早一步听到 ready，晚一步 ping 也还来得及。
+startRelayListener();
+
+let relayRequestSeq = 0;
+
+/**
+ * 一次中继请求。握手（含 5 秒等待）不成功、或 5 秒没等到答复，都答 `undefined`，
+ * 由 `requestWebBridge` 回落到服务器桥 —— 不抛错，调用方不该察觉这条通道的存在。
+ */
+const requestViaRelay = async (payload: BridgePayload): Promise<unknown> => {
+    if (!isRelayUsable()) return undefined;
+    const ready = await waitForRelayReady(RELAY_TIMEOUT_MS);
+    if (!ready) return undefined;
+    const id = `relay-${Date.now()}-${relayRequestSeq += 1}`;
+    return new Promise((resolve) => {
+        const timer = setTimeout(() => {
+            relayPending.delete(id);
+            resolve(undefined);
+        }, RELAY_TIMEOUT_MS);
+        relayPending.set(id, { timer, resolve });
+        try {
+            window.postMessage({ type: RELAY_MESSAGE_TYPE, id, payload }, RELAY_PAGE_ORIGIN);
+        } catch (_) {
+            relayPending.delete(id);
+            clearTimeout(timer);
+            resolve(undefined);
+        }
+    });
+};
+
 /** 从一次桥答复里取出会话（没有就返回空串）。凭据的值不进日志。 */
 export const readBridgeSession = (answer: unknown): string => {
     const session = (answer as { __foliaBridgeSession?: BridgeSessionPayload } | null | undefined)?.__foliaBridgeSession;
@@ -157,14 +278,23 @@ export const readBridgeSession = (answer: unknown): string => {
 /**
  * 发一次桥请求。
  *
+ * 通道优先级：篡改猴中继（用户自己装的脚本，浏览器直连上游）→ 服务器桥
+ * （`/api/__folia_bridge`，同源 Node 服务）。中继没握手成功、或请求失败/超时，
+ * 都自动回落服务器桥，调用方不抛错 —— 桌面桥不在这里：它由各 transport 在进
+ * 这个函数之前就用自己的接口走掉了，与原有逻辑一致。
+ *
  * 答复就是接口代码自己的返回值（上游 JSON），错误以 `__foliaBridgeError` 的形式回来 ——
  * 和 Android 桥、桌面桥的形状一致，好让上层的 transport 只有一套分支。
  *
  * 会话（cookie）跟着请求走：调用方把页面存着的那份放进 `sessionCookies`，答复里交回来的那份
- * 在 `__foliaBridgeSession`（用 `readBridgeSession` 取）。这里不碰 localStorage —— 每个平台的
- * 会话存哪个键、什么时候覆盖，是那家自己的规则。
+ * 在 `__foliaBridgeSession`（用 `readBridgeSession` 取）。两条通道的答复形状一致 —— 中继只是
+ * 转发，桥答什么它转什么 —— 所以这里的会话回写对两条通道是同一套。这里不碰 localStorage ——
+ * 每个平台的会话存哪个键、什么时候覆盖，是那家自己的规则。
  */
 export const requestWebBridge = async <T = unknown>(payload: BridgePayload): Promise<T> => {
+    const relayAnswer = await requestViaRelay(payload);
+    if (relayAnswer !== undefined) return relayAnswer as T;
+
     const response = await fetch(BRIDGE_ROUTE, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -184,3 +314,6 @@ export const requestWebBridge = async <T = unknown>(payload: BridgePayload): Pro
 
 /** 一次登录用完就丢的会话标记，用来在诊断里区分「走的本地登录」还是「走的后端」。 */
 export const WEB_BRIDGE_LABEL = '本机（CORS 服务，无自建后端）';
+
+/** 测试与诊断用：中继握手现在成功了吗。 */
+export const isRelayReady = (): boolean => relayReady;

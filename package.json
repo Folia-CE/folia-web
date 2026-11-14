@@ -2,7 +2,7 @@
   "name": "folia-major",
   "productName": "Folia",
   "desktopName": "folia-major.desktop",
-  "description": "Lyrics Reimagine",
+  "description": "Folia 纯 Web 静态版：纯静态页面 + Node 同源桥，无需自建音乐后端",
   "author": {
     "name": "chthollyphile",
     "email": "chthollyphile@users.noreply.github.com"

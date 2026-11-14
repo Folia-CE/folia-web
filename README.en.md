@@ -31,11 +31,17 @@ Lyrics Reimagined // 辞曲新境
 
 ## About
 
-Folia is an online music player built around full-screen, immersive lyrics. It supports NetEase Cloud Music, Kugou, QQ Music, Navidrome, and local music libraries; the desktop app also supports Bodian Music, YouTube Music, Spotify, and Qishui Music. Smart lyric matching, AI-generated color themes, and a range of full-screen lyric animations make listening feel different.
+**This repository is the pure static web edition of folia**: a fully static front page plus a Node same-origin bridge (`server/static-server.mjs` hands `POST /api/__folia_bridge` to the API code bundled with the front end). No self-hosted music backend is needed; sign-ins and requests happen on the visitor's machine and the deployment's server, with no third-party relay in between.
 
-Folia ships as an Electron desktop app for Windows, macOS, and Linux, and as a Node.js web app you can deploy to many platforms.
+Differences from the desktop edition (Electron):
 
-To use Folia on a phone or in a browser, [deploy the web app to Vercel in one click](https://folia-site.cielaniska.top/guide/deploy-vercel), or deploy it yourself to any platform that runs Node.js.
+- No local music library or mod support;
+- Some platform logins and desktop-only platforms (Bodian etc.) are unavailable or restricted;
+- Music platform APIs send no CORS headers, so the web edition routes them through the same-origin bridge (the desktop edition uses a local server inside the main process).
+
+Optional enhancement: install a Tampermonkey userscript ([folia-bridge-relay.user.js](public/folia-bridge-relay.user.js)) and bridge requests go straight from the visitor's browser via `GM_xmlhttpRequest` to the music platforms — faster, with zero load on the deployed server. Without it everything works as before through the same-origin server bridge.
+
+Folia is an online music player built around full-screen, immersive lyrics. It supports NetEase Cloud Music, Kugou, QQ Music, Navidrome, and more. Smart lyric matching, AI-generated color themes, and a range of full-screen lyric animations make listening feel different. For the desktop edition see the [folia-major repository](https://github.com/chthollyphile/folia-major).
 
 ## Quick download
 

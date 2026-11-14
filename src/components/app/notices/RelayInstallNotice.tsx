@@ -1,0 +1,92 @@
+import React, { useEffect, useState } from 'react';
+import { Puzzle } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { Sheet, SheetButton } from '../../shared/Sheet';
+import { isRelayReady } from '../../../services/webBridge';
+
+// src/components/app/notices/RelayInstallNotice.tsx
+// 篡改猴中继脚本的安装引导：纯网页环境里，弹窗问一次要不要装 public/folia-bridge-relay.user.js。
+//
+// 装了它之后，桥的请求从用户自己的浏览器直连上游（GM_xmlhttpRequest 不受同源策略限制），
+// QQ 扫码等特权请求更快，部署的服务器零负担。没装也完全能用 —— 走同源服务器桥。
+//
+// 触发条件（三者缺一不弹）：
+//   1. 纯网页环境（无 window.electron，桌面版有主进程的本地服务，不需要脚本）；
+//   2. 中继握手没有成功（装了脚本的页面 services/webBridge.ts 那边已经握手成功，不用再问）；
+//   3. 用户没有点过「忽略」（localStorage 键 folia_relay_notice_dismissed_v1）。
+
+const DISMISS_KEY = 'folia_relay_notice_dismissed_v1';
+
+/** 中继握手是异步的（ping-pong 要一个来回）：给一小段宽限再判定「没装脚本」。 */
+const READY_GRACE_MS = 1500;
+
+export const RelayInstallNotice: React.FC = () => {
+    const { t } = useTranslation();
+    const [isOpen, setIsOpen] = useState(false);
+
+    useEffect(() => {
+        // 桌面版不需要这个脚本：主进程里的本地服务把同源与跨域都解决了。
+        if (typeof window === 'undefined' || Boolean((window as any).electron)) return;
+        // 点过忽略的人不再打扰；这个键不与任何已发布的键冲突。
+        try {
+            if (window.localStorage.getItem(DISMISS_KEY)) return;
+        } catch (_) {
+            return;
+        }
+        let timer: ReturnType<typeof setTimeout> | null = null;
+        // 等一小段宽限再问一次握手：脚本在 document-start 就应答，1.5 秒内没应就是没装。
+        timer = setTimeout(() => {
+            if (!isRelayReady()) setIsOpen(true);
+        }, READY_GRACE_MS);
+        return () => {
+            if (timer) clearTimeout(timer);
+        };
+    }, []);
+
+    const dismiss = (): void => {
+        try {
+            window.localStorage.setItem(DISMISS_KEY, '1');
+        } catch (_) {
+            // 存不进去（隐私模式等）就只关这一次，下次启动再问 —— 不比「从来没见过」更差。
+        }
+        setIsOpen(false);
+    };
+
+    const install = (): void => {
+        try {
+            window.open('/folia-bridge-relay.user.js', '_blank', 'noopener');
+        } catch (error) {
+            console.warn('[中继引导] 打开脚本地址失败', error);
+        }
+        setIsOpen(false);
+    };
+
+    if (!isOpen) return null;
+
+    return (
+        <Sheet
+            isOpen={isOpen}
+            onClose={dismiss}
+            size="s"
+            title={t('options.relayNoticeTitle')}
+            titleLead={<Puzzle size={16} className="text-[color:var(--st-t2)]" />}
+            footer={(
+                <>
+                    <SheetButton onClick={dismiss}>{t('options.relayNoticeDismiss')}</SheetButton>
+                    <SheetButton variant="primary" onClick={install}>{t('options.relayNoticeInstall')}</SheetButton>
+                </>
+            )}
+        >
+            <div className="space-y-2 text-[13px] leading-6 text-[color:var(--st-t2)]">
+                <p>{t('options.relayNoticeBody')}</p>
+                <ol className="list-decimal space-y-1 pl-5">
+                    <li>{t('options.relayNoticeStepTampermonkey')}</li>
+                    <li>{t('options.relayNoticeStepOpen')}</li>
+                    <li>{t('options.relayNoticeStepRefresh')}</li>
+                </ol>
+            </div>
+        </Sheet>
+    );
+};
+
+export default RelayInstallNotice;

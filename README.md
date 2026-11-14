@@ -33,11 +33,17 @@ Lyrics Reimagined // 辞曲新境
 
 ## 项目简介
 
-Folia是一个以全屏沉浸式歌词播放为核心的在线音乐播放器，支持网易云、酷狗、QQ 音乐、Navidrome 和本地音乐库，桌面端还支持波点音乐、YouTube Music、Spotify 和汽水音乐，通过智能歌词匹配，AI生成配色主题，以及多种全屏歌词动画为用户提供独特的听歌体验。
+**本仓库是 folia 的纯 Web 静态版**：纯静态页面 + Node 同源桥（`server/static-server.mjs` 把 `POST /api/__folia_bridge` 交给随前端打包的接口代码），无需自建音乐后端。登录与请求都在访问者自己的机器与部署服务上完成，不经过任何第三方中转。
 
-提供基于Electron的 windows/ macOS/ Linux 桌面端版本与基于 Node.js 的 Web 版本，支持多平台部署。
+与桌面版（Electron）的差异：
 
-如果希望能够在移动设备上使用，或在浏览器上体验，可以选择[一键部署到 Vercel](https://folia-site.cielaniska.top/guide/deploy-vercel) 的 Web 版本，或自行部署到其他支持 Node.js 的平台。
+- 没有本地音乐库与模组（mods）能力；
+- 部分平台的登录与桌面专属平台（波点等）不可用或受限；
+- 音乐平台接口不发 CORS 头，网页版靠同源桥转发解决（桌面版走主进程内的本地服务）。
+
+可选增强：装一个篡改猴脚本（[folia-bridge-relay.user.js](public/folia-bridge-relay.user.js)）后，桥的请求改从访问者的浏览器经 `GM_xmlhttpRequest` 直连音乐平台 —— 更快，部署的服务器零负担；未安装时照旧走同源服务器桥，功能不受影响。
+
+Folia 是一个以全屏沉浸式歌词播放为核心的在线音乐播放器，支持网易云、酷狗、QQ 音乐、Navidrome 等平台，通过智能歌词匹配、AI 生成配色主题，以及多种全屏歌词动画为用户提供独特的听歌体验。桌面版能力见 [folia-major 仓库](https://github.com/chthollyphile/folia-major)。
 
 ## 快速下载
 

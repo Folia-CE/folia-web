@@ -29,6 +29,7 @@ import { useMorphKeepsHost } from './components/collectionFlight';
 import { UserGuideModal } from './components/modal/UserGuideModal';
 import ReleaseNotesDialog from './components/modal/ReleaseNotesDialog';
 import CanxuebanNotice from './components/app/notices/CanxuebanNotice';
+import RelayInstallNotice from './components/app/notices/RelayInstallNotice';
 import FreeSoftwareNoticeModal from './components/modal/FreeSoftwareNoticeModal';
 import LegacyModelsPrompt from './components/modal/LegacyModelsPrompt';
 import { PlaybackEntryViewPrompt } from './components/modal/playback-entry-view/PlaybackEntryViewPrompt';
@@ -2961,6 +2962,7 @@ export default function App() {
                 onClose={startupExperience.closeReleaseNotes}
             />
             <CanxuebanNotice />
+            <RelayInstallNotice />
             <UserGuideModal theme={theme} />
             <PlaybackEntryViewPrompt theme={theme} />
             <LatticeFmNotice />

@@ -204,7 +204,9 @@ export default async function viteConfig(_config: ConfigEnv): Promise<UserConfig
     .slice(0, 12)}`;
 
   return {
-    base: process.env.ELECTRON === 'true' ? './' : '/',
+    // 纯静态版：部署路径由环境变量定（GitHub Pages 是 /<repo>/，自托管在根目录是 /）。
+    // ELECTRON 走相对路径（打包进 exe 后从文件系统加载）。
+    base: process.env.ELECTRON === 'true' ? './' : (process.env.FOLIA_BASE_PATH || '/'),
     worker: {
       format: 'es'
     },

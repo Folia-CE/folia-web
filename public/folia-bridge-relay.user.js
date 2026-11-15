@@ -3,7 +3,8 @@
 // @namespace    folia.tangbot.xyz
 // @version      2.0.0
 // @description  Folia 纯网页版的本地桥：页面把请求交给本脚本，脚本在自己的沙箱里跑桥接口代码（运行时从站点拉取，随部署自动更新），用 GM_xmlhttpRequest 直连各家上游。跨域与带 Cookie 都不受网页同源策略限制。
-// @match        https://folia.tangbot.xyz/*
+// @match        https://*/*
+// @match        http://*/*
 // @run-at       document-start
 // @grant        GM_xmlhttpRequest
 // @grant        GM_setValue
@@ -82,9 +83,14 @@
 (() => {
     'use strict';
 
-    const PAGE_ORIGIN = 'https://folia.tangbot.xyz';
-    const MANIFEST_URL = `${PAGE_ORIGIN}/folia-bridge-vm/manifest.json`;
-    const BUNDLE_URL = (file) => `${PAGE_ORIGIN}/folia-bridge-vm/${file}`;
+    // 页面 origin 运行时自取：同一个脚本装在任何部署上都能用 —— 纯静态版发到 GitHub
+    // Pages 或任何静态托管都成立，不必为每个域名重发一版脚本。
+    const PAGE_ORIGIN = window.location.origin;
+    // bundle 的路径跟着部署走：GitHub Pages 在 /<repo>/ 下、自托管在根目录 —— 用页面的
+    // baseURI 推断（它已经包含部署前缀）。
+    const BASE_PATH = new URL('.', document.baseURI).pathname;
+    const MANIFEST_URL = `${PAGE_ORIGIN}${BASE_PATH}folia-bridge-vm/manifest.json`;
+    const BUNDLE_URL = (file) => `${PAGE_ORIGIN}${BASE_PATH}folia-bridge-vm/${file}`;
     const REQUEST_TIMEOUT_MS = 45000;
     const BRIDGE_SOURCE = 'folia-extension-bridge';
 

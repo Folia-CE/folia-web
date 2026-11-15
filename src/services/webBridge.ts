@@ -28,7 +28,7 @@ const BRIDGE_ROUTE = '/api/__folia_bridge';
  * `{ type: '__folia_bridge_relay_result', id, answer }`；脚本就绪时先广播一条
  * `__folia_bridge_relay_ready`。页面还主动 ping 一次，处理「脚本比页面晚装好」的情况。
  */
-const RELAY_PAGE_ORIGIN = 'https://folia.tangbot.xyz';
+const RELAY_PAGE_ORIGIN = typeof window !== 'undefined' && window.location ? window.location.origin : '';
 const RELAY_MESSAGE_TYPE = '__folia_bridge_relay';
 const RELAY_RESULT_TYPE = '__folia_bridge_relay_result';
 const RELAY_READY_TYPE = '__folia_bridge_relay_ready';
@@ -189,11 +189,11 @@ const relayPending = new Map<string, { timer: ReturnType<typeof setTimeout>; res
 
 const isPageOrigin = (): boolean => (
     typeof window !== 'undefined' && window.location
-        ? window.location.origin === RELAY_PAGE_ORIGIN
+        ? Boolean(window.location.origin) && window.location.origin !== 'null'
         : false
 );
 
-/** 中继只在这一个部署上工作（脚本 @match 与这里保持同一域名）。 */
+/** 中继在任何一个部署上都能工作：脚本的 @match 由用户自己配，页面只跟当前 origin 说话。 */
 const isRelayUsable = (): boolean => (
     !isDesktopShell() && typeof window !== 'undefined' && typeof window.postMessage === 'function' && isPageOrigin()
 );

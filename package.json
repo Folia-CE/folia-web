@@ -2,7 +2,7 @@
   "name": "folia-major",
   "productName": "Folia",
   "desktopName": "folia-major.desktop",
-  "description": "Folia 纯 Web 静态版：纯静态页面 + Node 同源桥，无需自建音乐后端",
+  "description": "Folia 的纯静态化版本：整个应用就是一批静态文件，不需要任何服务器、不需要自建音乐后端 —— 装上浏览器中继脚本后，各家平台的接口请求从你自己的浏览器直连上游",
   "author": {
     "name": "chthollyphile",
     "email": "chthollyphile@users.noreply.github.com"
@@ -48,6 +48,11 @@
     "test": "vitest run -c vitest.config.ts",
     "test:unit": "vitest run -c vitest.config.ts",
     "test:unit:watch": "vitest -c vitest.config.ts",
+    "check:versions": "node ci/checkVersionPolicy.ts",
+    "check:ui": "node ci/uiPolicy.ts controls",
+    "check:size": "node ci/uiPolicy.ts size",
+    "check:secrets": "node ci/checkSecrets.ts",
+    "ci:local": "npm run check:ui && npm run check:size && npm run check:versions && npm run check:secrets && npm run typecheck && npm run test:unit",
     "test:ui": "playwright test",
     "test:component": "playwright test --project=components",
     "test:ui:update": "playwright test --update-snapshots",

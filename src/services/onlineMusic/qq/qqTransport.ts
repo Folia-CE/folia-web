@@ -525,7 +525,6 @@ export const requestQq = async <T = unknown>(
         );
     }
     const stored = getWebSessionCookie();
-    const base = await resolveApiBase();
     // The session parked for this run is not sent (isQqSessionParked). The status is read once the backend has a port.
     const cookie = stored && await isQqSessionStoreUnreadable() ? '' : stored;
 
@@ -549,6 +548,9 @@ export const requestQq = async <T = unknown>(
         return bridged as T;
     }
 
+
+    // 桥不在（或不在本机形态）：走配置的后端地址。
+    const base = await resolveApiBase();
 
     const query = new URLSearchParams();
     Object.entries(endpoint.query).forEach(([key, value]) => {

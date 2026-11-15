@@ -240,7 +240,11 @@ const startRelayListener = (): void => {
 };
 
 // 监听器在模块加载时挂上：早一步听到 ready，晚一步 ping 也还来得及。
-startRelayListener();
+// 挂载须防错：测试与某些内嵌环境给的是不完整的 window 桩（没有 addEventListener），
+// 挂不上就不挂——那条环境本来就进不了中继通道，后续 isRelayReady 的探测都会自然失败。
+try {
+    startRelayListener();
+} catch (_) {}
 
 let relayRequestSeq = 0;
 

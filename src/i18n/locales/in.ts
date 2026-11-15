@@ -2531,6 +2531,8 @@ export default {
     "bravaisSeamFlipDesc": "Membalik arah di atas: vertikal membuka dari celah horizontal, horizontal membuka dari celah vertikal, dan otomatis tidak lagi memakai strip horizontal di layar tegak. Bersama arah, ini menentukan strip melintang atau menurun; aktif secara bawaan.",
     "bravaisSeamDirectionAuto": "Otomatis",
     "bravaisSeamDirectionAutoDesc": "Baris pada layar tinggi (ponsel tegak, jendela tinggi), kolom pada layar lebar; berganti saat layar diputar.",
+    "bravaisSeamDirectionAutoReverse": "Otomatis (terbalik)",
+    "bravaisSeamDirectionAutoReverseDesc": "Kolom pada layar tinggi, baris pada layar lebar (jendela desktop, ponsel miring); berganti saat layar diputar.",
     "bravaisSeamDirectionVertical": "Vertikal",
     "bravaisSeamDirectionVerticalDesc": "Terbuka di antara dua kolom blok; dinding terbelah kiri dan kanan.",
     "bravaisSeamDirectionHorizontal": "Horizontal",

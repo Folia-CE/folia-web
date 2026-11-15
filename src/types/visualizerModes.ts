@@ -24,7 +24,6 @@ export const BUILTIN_VISUALIZER_MODES = [
     'lumiere',
     'machi',
     'monet',
-    'nebbia',
     'partita',
     'pendolo',
     'prompt',

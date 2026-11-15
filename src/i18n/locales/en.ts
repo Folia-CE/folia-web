@@ -2531,6 +2531,8 @@ export default {
     "bravaisSeamFlipDesc": "Turns the direction above the other way round: vertical opens from the horizontal gap instead, horizontal opens from the vertical gap, and auto no longer picks the horizontal strip on a portrait screen. Together with the direction this decides whether the strip runs across or down; on by default.",
     "bravaisSeamDirectionAuto": "Automatic",
     "bravaisSeamDirectionAutoDesc": "A row on tall screens (a phone held upright, a tall window), a column on wide ones; switches when the screen turns.",
+    "bravaisSeamDirectionAutoReverse": "Automatic (reversed)",
+    "bravaisSeamDirectionAutoReverseDesc": "A column on tall screens, a row on wide ones (a desktop window, a phone held sideways); switches when the screen turns.",
     "bravaisSeamDirectionVertical": "Vertical",
     "bravaisSeamDirectionVerticalDesc": "Opens between two block columns; the wall parts left and right.",
     "bravaisSeamDirectionHorizontal": "Horizontal",

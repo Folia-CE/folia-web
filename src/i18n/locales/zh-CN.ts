@@ -2531,6 +2531,8 @@ export default {
     "bravaisSeamFlipDesc": "把上面选的方向整个倒过来：竖向改成从横缝裂开、横向改成从竖缝裂开，自动时竖着的屏幕不再用横条。方向和它一起决定信息条到底横着还是竖着，默认打开。",
     "bravaisSeamDirectionAuto": "自动",
     "bravaisSeamDirectionAutoDesc": "竖着的屏幕（手机竖屏、竖长的窗口）用横条，横着的用竖缝；转屏时随之切换。",
+    "bravaisSeamDirectionAutoReverse": "自动（反向）",
+    "bravaisSeamDirectionAutoReverseDesc": "竖着的屏幕用竖缝，横着的屏幕（桌面窗口、手机横屏）用横条；转屏时随之切换。",
     "bravaisSeamDirectionVertical": "竖向",
     "bravaisSeamDirectionVerticalDesc": "从块与块之间的竖缝裂开，墙左右分开。",
     "bravaisSeamDirectionHorizontal": "横向",

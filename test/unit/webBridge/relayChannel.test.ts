@@ -114,7 +114,7 @@ describe('页面侧的中继通道', () => {
             const promise = requestWebBridge({ provider: 'netease', operation: 'login_status', path: '/login/status' });
             // 先挂上 rejection 处理再推进时间：reject 发生在 timer 触发的同一个 tick 里，
             // 顺序反了就是 unhandled rejection。
-            const caught = promise.catch((error: Error) => error);
+            const caught: Promise<Error> = promise.then(undefined, (error: Error) => error);
             await vi.advanceTimersByTimeAsync(5100);
             // 装了脚本（握手成功）就绝不下到服务器桥：这条请求直接失败，界面上可见。
             expect((await caught).message).toMatch(/relay/i);

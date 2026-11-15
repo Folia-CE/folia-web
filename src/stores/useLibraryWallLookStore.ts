@@ -12,7 +12,7 @@ import { normalizeLibraryWallSeamDirection, type LibraryWallSeamDirection } from
 // windowsPerBlock（1–6，默认 3）；集合磁贴的叠页边开关 collectionStackEdges（默认开，设计稿 §7.7）；
 // 信息条（缝）的材质：始终透明 seamClear（默认开，用户定 2026-10-09）与实色模式的预设 seamStyle（默认主题纸色，透明开着时不生效）；
 // 透出的播放页画面（backdrop）要不要画歌词文字 backdropLyrics、要不要模糊 backdropBlur（都默认关，§11「墙后的画面」）；
-// 信息条的方向 seamDirection：竖向 / 横向（从块的横向缝隙裂开成横条）/ 自动（按视口宽高比，默认），见 utils/libraryWallSeamDirection。
+// 信息条的方向 seamDirection：竖向 / 横向（从块的横向缝隙裂开成横条）/ 自动（按视口宽高比，默认）/ 自动（反向），见 utils/libraryWallSeamDirection。
 // 放在 app 层而不是 suite 里，因为设置 UI（components/modal/settings）不能 import suite；bravais 的 stage 读这里。
 // 只在 bravais 是生效 suite 时才有界面入口（library/app/bravaisLibraryActive；界面设置的「Bravais」分组）。
 //
@@ -36,7 +36,6 @@ const LIBRARY_WALL_SEAM_STYLE_KEY = 'library_wall_seam_style';
 const LIBRARY_WALL_BACKDROP_LYRICS_KEY = 'library_wall_backdrop_lyrics';
 const LIBRARY_WALL_BACKDROP_BLUR_KEY = 'library_wall_backdrop_blur';
 const LIBRARY_WALL_SEAM_DIRECTION_KEY = 'library_wall_seam_direction';
-const LIBRARY_WALL_SEAM_FLIP_KEY = 'library_wall_seam_flip';
 
 const readStored = (key: string): string | null => {
     if (typeof window === 'undefined') return null;
@@ -64,8 +63,6 @@ const readStoredStackEdges = (): boolean => readStored(LIBRARY_WALL_STACK_EDGES_
 const readStoredFlag = (key: string): boolean => readStored(key) === 'true';
 /** 信息条始终透明：默认开（用户定，2026-10-09）；只认 'false' 为关。 */
 const readStoredSeamClear = (): boolean => readStored(LIBRARY_WALL_SEAM_CLEAR_KEY) !== 'false';
-/** 信息条方向反向：默认开；只认 'false' 为关（与 seamClear 同一档处理）。 */
-const readStoredSeamFlip = (): boolean => readStored(LIBRARY_WALL_SEAM_FLIP_KEY) !== 'false';
 const readStoredSeamStyle = (): LibraryWallSeamStyle => normalizeLibraryWallSeamStyle(readStored(LIBRARY_WALL_SEAM_STYLE_KEY));
 
 const readAll = () => ({
@@ -77,7 +74,6 @@ const readAll = () => ({
     backdropLyrics: readStoredFlag(LIBRARY_WALL_BACKDROP_LYRICS_KEY),
     backdropBlur: readStoredFlag(LIBRARY_WALL_BACKDROP_BLUR_KEY),
     seamDirection: normalizeLibraryWallSeamDirection(readStored(LIBRARY_WALL_SEAM_DIRECTION_KEY)),
-    seamFlip: readStoredSeamFlip(),
 });
 
 export type LibraryWallLookState = {
@@ -102,11 +98,6 @@ export type LibraryWallLookState = {
      * 歌手 / 专辑海报仍是竖的开口）；自动时竖着的屏幕用横向。
      */
     seamDirection: LibraryWallSeamDirection;
-    /**
-     * 信息条方向反向（默认开）：把 seamDirection 解析出来的横竖整个倒过来。
-     * 方向只说了「从哪种缝里裂开」，没说相对谁；这个开关让人按自己看墙的方式定。
-     */
-    seamFlip: boolean;
     /** 非法值回默认档后再写入。 */
     setLook: (look: LibraryWallLook) => void;
     /** 先钳到 1–6 再写入。 */
@@ -119,7 +110,6 @@ export type LibraryWallLookState = {
     setBackdropBlur: (enabled: boolean) => void;
     /** 非法值回默认（自动）后再写入。 */
     setSeamDirection: (direction: LibraryWallSeamDirection) => void;
-    setSeamFlip: (enabled: boolean) => void;
     /** 从存储重新读一遍（存储被别处改写、或测试模拟重启时用）。 */
     hydrate: () => void;
 };
@@ -160,6 +150,5 @@ export const useLibraryWallLookStore = create<LibraryWallLookState>(set => ({
         writeStored(LIBRARY_WALL_SEAM_DIRECTION_KEY, normalized);
         set({ seamDirection: normalized });
     },
-    setSeamFlip: enabled => set({ seamFlip: writeFlag(LIBRARY_WALL_SEAM_FLIP_KEY, enabled) }),
     hydrate: () => set(readAll()),
 }));

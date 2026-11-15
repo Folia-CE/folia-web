@@ -35,6 +35,7 @@ describe('the platform column', () => {
         expect(rowStatus(row('a', signedIn))).toBe('signed-in');
         expect(rowStatus(row('a', ranOut))).toBe('ran-out');
         expect(rowStatus(row('a'))).toBe('signed-out');
+        expect(rowStatus(row('a', { status: 'unknown', hydration: 'loading' }))).toBe('checking');
         expect(rowStatus(row('a', { requiresAccount: false }))).toBe('accountless');
         // Out of reach wins over everything: such a row cannot be chosen, whoever was signed in there.
         expect(rowStatus(row('a', { ...signedIn, ...off }))).toBe('off');
@@ -48,11 +49,9 @@ describe('the platform column', () => {
         expect(orderRows(rows, 'e').map(entry => entry.providerId)).toEqual(['e', 'c', 'b', 'a', 'd', 'f', 'g']);
     });
 
-    // 够不着的平台照样列出来，只是置灰：整行过滤掉会让人以为这个版本压根没接。
-    it('lists a platform this runtime cannot use at all, next to one that is only not configured', () => {
+    it('leaves out a platform this runtime cannot use at all, and keeps one that is only not configured', () => {
         const rows = [row('a'), row('b', { availability: { configured: false, reason: 'runtime-unavailable' } }), row('c', off)];
-        expect(orderRows(rows, 'b').map(entry => entry.providerId)).toEqual(['b', 'a', 'c']);
-        expect(rowStatus(row('b', { availability: { configured: false, reason: 'runtime-unavailable' } }))).toBe('off');
+        expect(orderRows(rows, 'b').map(entry => entry.providerId)).toEqual(['a', 'c']);
     });
 
     it('filters by a piece of the short or the long name, whatever the case', () => {
@@ -61,6 +60,13 @@ describe('the platform column', () => {
         expect(filterRows(rows, 'a').map(entry => entry.providerId)).toEqual(['alpha', 'beta', 'gamma']);
         expect(filterRows(rows, '  ')).toHaveLength(3);
         expect(filterRows(rows, 'none')).toEqual([]);
+    });
+
+    it('also finds a row by the name shown on screen, which may be a translated one', () => {
+        const rows = [row('alpha'), row('beta', { shortName: '波点', displayName: '波点音乐' })];
+        const shownName = (entry: ProviderAccountSummary) => (entry.providerId === 'beta' ? 'Bodian' : entry.shortName);
+        expect(filterRows(rows, 'bodian', shownName).map(entry => entry.providerId)).toEqual(['beta']);
+        expect(filterRows(rows, 'bodian')).toEqual([]);
     });
 });
 
@@ -71,7 +77,7 @@ describe('the switcher pill and an account\'s picture', () => {
         const rows = [row('a', unusable), row('b'), row('c', off)];
         expect(pillProvider(rows, 'b')?.providerId).toBe('b');
         expect(pillProvider(rows, 'a')?.providerId).toBe('b');
-        expect(pillProvider([row('a', unusable)], 'a')?.providerId).toBe('a');
+        expect(pillProvider([row('a', unusable)], 'a')).toBeNull();
     });
 
     // A click on the pill opens the window on the platform it shows, and a row that is out of
@@ -143,6 +149,7 @@ describe('what a chosen row leads to', () => {
         expect(rowLeadsTo('signed-out')).toBe('sign-in');
         expect(rowLeadsTo('ran-out')).toBe('sign-in');
         expect(rowLeadsTo('off')).toBeNull();
+        expect(rowLeadsTo('checking')).toBe('sign-in');
     });
 });
 
@@ -343,11 +350,29 @@ describe('the texts the window can ask for', () => {
     it('declares a second line of its own only where the sentence names that platform\'s own thing', () => {
         const notes = Object.fromEntries(listOnlineMusicProviders().map(provider => [provider.id, omni.getLoginTexts(provider.id)?.caseNotes ?? null]));
         expect(notes).toEqual({
-            netease: null, kugou: null, bodian: null, qishui: null,
+            netease: null, kugou: null, bodian: null, fnmusic: null, qishui: null, appleMusic: null,
             // 扫错 App 的那一句按后端有没有 QQ 音乐 App 扫码说（这里还没问到后端）。
             qq: { 'local-service-unavailable': 'home.loginCaseQqRestart', 'wrong-scan-app': 'home.loginCaseQqWrongScanAppMobileOnly', 'device-limit': 'home.loginCaseQqDeviceLimit' },
             ytm: { 'browser-unfinished': 'home.loginCaseYtmUnfinished', 'no-browser': 'home.loginNoBrowserYtm' },
             spotify: { 'browser-unfinished': 'home.loginCaseSpotifyUnfinished', 'not-authorized': 'home.loginCaseSpotifyDenied', 'cannot-listen': 'home.loginCaseSpotifyPort' },
         });
+    });
+});
+
+describe('loginView · the check after a sign-in and the setup checklist', () => {
+    it('shows the check as its own scene and the checklist over whatever the row leads to', () => {
+        expect(loginScene({ lead: 'sign-in', phase: 'checking', inBrowser: true, failed: false })).toBe('checking');
+        expect(loginScene({ lead: 'sign-in', phase: 'checking', inBrowser: true, failed: false, setup: true })).toBe('setup');
+        expect(loginScene({ lead: 'account', phase: null, inBrowser: false, failed: false, setup: true })).toBe('setup');
+        expect(loginScene({ lead: null, phase: null, inBrowser: false, failed: false, setup: true })).toBe('none');
+        expect(sceneHeadline('checking', true)).toBe('login.checkingAccount');
+    });
+
+    it('adds a check mark after the account when the platform checks, and walks onto it', () => {
+        expect(stepMarks('browser', true, true)).toEqual({ marks: ['browser', 'account', 'check'], current: 0 });
+        expect(stepMarks('reading', true, true)?.current).toBe(1);
+        expect(stepMarks('checking', true, true)?.current).toBe(2);
+        expect(stepMarks('reading', false, true)).toEqual({ marks: ['code', 'phone', 'account', 'check'], current: 2 });
+        expect(stepMarks('setup', true, true)).toBeNull();
     });
 });

@@ -33,6 +33,8 @@ export const PLATFORM_NAMES = {
     ytm: /ytm|youtube/i,
     spotify: /spotify/i,
     qishui: /qishui|汽水音乐/i,
+    appleMusic: /applemusic|apple music|苹果音乐/i,
+    fnmusic: /fnmusic|飞牛/i,
 } as const;
 
 export type CountedPlatform = keyof typeof PLATFORM_NAMES;
@@ -67,19 +69,7 @@ const listFiles = (dir: string): string[] => readdirSync(dir, { withFileTypes: t
 });
 
 // A folder named for a platform is that platform's own: src/services/onlineMusic/qq/, electron/qq/.
-//
-// `src/webBridge/api/` is the same thing under another name: it holds one vendored driver per
-// platform (netease.js, qq.js, kugou.js, bodian.js) — the pure-JavaScript API code the web build
-// runs in the browser, taken from folia-sonnet's nativeBridge. It is *all* platform code and no
-// shared code, so naming a platform in there is the rule living in the platform's own folder,
-// not a platform rule leaking into shared code. Counting it would say "these 1.5k lines of
-// vendor code must move into a folder named after each platform", which is not a thing this
-// rule is about.
-const isVendoredPlatformCode = (file: string): boolean => file.startsWith('src/webBridge/api/');
-
-const isOwnFile = (file: string, platform: CountedPlatform): boolean => (
-    isVendoredPlatformCode(file) || file.split('/').slice(0, -1).includes(platform)
-);
+const isOwnFile = (file: string, platform: CountedPlatform): boolean => file.split('/').slice(0, -1).includes(platform);
 
 type Counted = Map<string, PlatformCounts>;
 

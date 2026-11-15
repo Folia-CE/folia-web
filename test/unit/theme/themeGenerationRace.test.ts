@@ -9,14 +9,14 @@ import { FALLBACK_AI_DUAL_THEME } from '@/services/themeSanitizer';
 import { getPlaybackSongKey } from '@/utils/appPlaybackGuards';
 import type { DualTheme, LyricData, SongResult } from '@/types';
 
-// Drive the real hook and stores with a deferred cloud read, artwork and cache IO. io.generate is
+// Drive the real hook and stores with deferred AI, artwork and cache IO.
 const io = vi.hoisted(() => ({
     generate: vi.fn(), save: vi.fn(), cached: vi.fn(), lastDual: vi.fn(),
     lastLegacy: vi.fn(), sync: vi.fn(), colors: vi.fn(),
 }));
 vi.mock('@/services/aiText', async (importOriginal) => ({
     ...await importOriginal<typeof import('@/services/aiText')>(),
-    readCloudThemeFromLyrics: io.generate,
+    generateThemeFromLyrics: io.generate,
 }));
 vi.mock('@/services/db', () => ({ saveToCache: io.save }));
 vi.mock('@/services/themeCache', () => ({
@@ -180,8 +180,7 @@ describe('theme generation request ownership', () => {
             usePlaybackStore.setState({ currentSong: SONG_B });
             generated.reject(new Error('Network unavailable'));
         });
-        // 现在没有「生成失败」这一档：缓存没命中就退回封面主题，结果照样是 generated。
-        expect(result).toEqual({ status: 'generated', applied: false });
+        expect(result).toEqual({ status: 'failed' });
         expect(visibleState()).toEqual(before);
         expect(controller.isGeneratingTheme).toBe(false);
     });
@@ -254,7 +253,7 @@ describe('theme generation request ownership', () => {
         expect(controller.theme.name).toBe('A dark');
         expect(controller.themeSourceModel.hasLocalAiTheme).toBe(true);
         expect(cache.get('last_dual_theme')?.dark.name).toBe('A dark');
-        expect(useStatusMessageStore.getState().message).toMatchObject({ type: 'success', text: 'status.cloudThemeApplied' });
+        expect(useStatusMessageStore.getState().message).toMatchObject({ type: 'success', text: 'status.themeApplied' });
         expect(controller.isGeneratingTheme).toBe(false);
         await act(async () => { await controller.generateAITheme(lyrics, SONG_A); });
         expect(io.generate).toHaveBeenCalledTimes(2);
@@ -271,11 +270,9 @@ describe('theme generation request ownership', () => {
         expect(await finish(first, () => a.resolve(THEME_A))).toEqual({ status: 'generated', applied: false });
         expect(controller.isGeneratingTheme).toBe(true);
         expect(controller.themeSourceModel.hasLocalAiTheme).toBe(false);
-        // 读缓存失败也只退回封面 —— 不再有 error 状态。
-        expect(await finish(second, () => b.reject(new Error('Network unavailable')))).toEqual({ status: 'generated', applied: true });
+        expect(await finish(second, () => b.reject(new Error('Network unavailable')))).toEqual({ status: 'failed' });
         expect(controller.isGeneratingTheme).toBe(false);
-        // 退回封面会说明一声「用的是封面主题」，但不是错误：云缓存没命中是常态。
-        expect(useStatusMessageStore.getState().message).toMatchObject({ type: 'info', text: 'status.aiFallbackThemeUsed' });
+        expect(useStatusMessageStore.getState().message).toMatchObject({ type: 'error', text: 'status.themeGenerationFailed' });
     });
 
     it('can still generate from lyrics when there is no current song', async () => {

@@ -4,6 +4,7 @@ import type { MotionValue } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { getCacheUsageByCategory, clearCacheByCategory } from '../../services/db';
 import { forgetSettledDrumHits } from '../../services/analysis/drumHits';
+import { clearBalanceRuntime } from '../../services/volumeBalance/balanceRecords';
 import { DualTheme, StageStatus, StageSource, Theme, ThemeMode, type NowPlayingConnectionStatus, type ReplayGainMode } from '../../types';
 import { getNavidromeConfig, saveNavidromeConfig, clearNavidromeConfig, hashPassword, navidromeApi, setNavidromeEnabled, getCachedNavidromeServerProfile, refreshNavidromeServerProfile, getNavidromeConfigOrigin, dismissNavidromeServerPreset } from '../../services/navidromeService';
 import { fetchNavidromeServerPreset, markNavidromeConfigAsPresetIfMatching, restoreNavidromeServerPreset } from '../../services/navidromeServerPreset';
@@ -11,6 +12,7 @@ import { NavidromeConfig, NavidromeServerProfile } from '../../types/navidrome';
 import VisPlayground from '../visualizer/window/VisPlayground';
 import { useVisualizerTunings } from '../visualizer/useVisualizerTunings';
 import ThemePark from './ThemePark';
+import SceneWindow from '../scenes/settings/SceneWindow';
 import LyricFilterSettingsModal from './LyricFilterSettingsModal';
 import type { LyricFilterDraft } from './LyricFilterSettingsModal';
 import GlobalLyricOffsetModal from './settings/GlobalLyricOffsetModal';
@@ -22,6 +24,7 @@ import { parseNumberText } from './settings/kit/numberText';
 import { SETTINGS_PAGES, SETTINGS_PAGE_OPTIONS } from './settings/pages';
 import HelpPage from './settings/pages/HelpPage';
 import { SettingsPageContext, type CacheCategory, type SettingsPageContextValue } from './settings/pages/settingsPageContext';
+import { AiHelpPromptModal } from './AiHelpPromptModal';
 import ReleaseNotesDialog from './ReleaseNotesDialog';
 import meowImageUrl from '../../../build/miao.png';
 import type { LyricData } from '../../types';
@@ -196,6 +199,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
         hidePlayerTranslationSubtitle,
         showSubtitleTranslation,
         subtitleContentMode,
+        subtitleOverlayLayout,
         subtitleOverlayOpacity,
         subtitleOverlayBackground,
         subtitleUpcomingLyricsBlur,
@@ -214,6 +218,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
         handleToggleHidePlayerTranslationSubtitle: onToggleHidePlayerTranslationSubtitle,
         handleToggleShowSubtitleTranslation: onToggleShowSubtitleTranslation,
         handleSetSubtitleContentMode: onSubtitleContentModeChange,
+        handleSetSubtitleOverlayLayout: onSubtitleOverlayLayoutChange,
         handleSetSubtitleOverlayOpacity: setSubtitleOverlayOpacity,
         handleToggleSubtitleOverlayBackground: onToggleSubtitleOverlayBackground,
         handleToggleSubtitleUpcomingLyricsBlur: onToggleSubtitleUpcomingLyricsBlur,
@@ -233,8 +238,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
         handleSetSubtitleFontFallbackFamilies: onSubtitleFontFallbackFamiliesChange,
     } = useTypographySettingsStore(useShallow(selectTypographySettingsSnapshot));
     const {
-        lyricFilterPattern,
-        lyricFilterEnabled,
+        lyricLineRules,
         lyricStaffPolicy,
         lyricStaffMinDwellSeconds,
         lyricStaffAbsorbMode,
@@ -323,8 +327,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
 
     const [showVisPlayground, setShowVisPlayground] = useState(false);
     const [showThemePark, setShowThemePark] = useState(false);
+    const [showSceneWindow, setShowSceneWindow] = useState(false);
     const [showLyricFilterSettings, setShowLyricFilterSettings] = useState(false);
     const [showGlobalLyricOffset, setShowGlobalLyricOffset] = useState(false);
+    const [showAiHelpPrompt, setShowAiHelpPrompt] = useState(false);
     const [showReleaseNotes, setShowReleaseNotes] = useState(false);
     const [, setAuthorClickCount] = useState(0);
     const [meowEasterEgg, setMeowEasterEgg] = useState<{ id: number; } | null>(null);
@@ -334,6 +340,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
         setActiveTab(initialTab);
         setShowVisPlayground(initialSubview === 'visualizer');
         setShowThemePark(initialSubview === 'themePark');
+        setShowSceneWindow(initialSubview === 'scene');
         setShowLyricFilterSettings(initialSubview === 'lyricFilter');
         setShowGlobalLyricOffset(initialSubview === 'globalLyricOffset');
 
@@ -348,7 +355,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
         } else {
             setActiveSettingsSection(prev => prev || 'appearance');
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [initialSubview, initialTab]);
 
     // A request for one place in the settings: show the page settingsAnchorModel puts it on, then
@@ -365,7 +371,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
         setSearchQuery('');
         // A request may name one row of the section; the section is where it lands while that row is not drawn.
         landOn(initialAnchor.rowId ?? initialAnchor.id, initialAnchor.id);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [initialAnchor]);
 
     // Cache State
@@ -374,7 +379,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
         lyrics: '0 B',
         cover: '0 B',
         media: '0 B',
-        analysis: '0 B'
+        analysis: '0 B',
+        volumeBalance: '0 B'
     });
     const [mediaCount, setMediaCount] = useState(0);
     const [isCleaning, setIsCleaning] = useState<CacheCategory | null>(null);
@@ -383,6 +389,17 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     // Seeded synchronously so a remembered desktop/mods section has its title on the first frame; the effect below still confirms it.
     const [isElectron, setIsElectron] = useState(hasElectronBridge);
     const [electronSettings, setElectronSettings] = useState({
+        GEMINI_API_KEY: '',
+        // Blank: the default model, worked out when the request is made (nothing is written back).
+        GEMINI_API_MODEL: '',
+        AI_PROVIDER_PRESET: '',
+        OPENAI_API_KEY: '',
+        OPENAI_API_URL: '',
+        OPENAI_API_MODEL: '',
+        OPENAI_API_TEMPERATURE: DEFAULT_OPENAI_TEMPERATURE,
+        OPENAI_API_STREAM: false,
+        AI_PROVIDER: 'gemini',
+        USE_SYSTEM_PROXY_FOR_AI: false,
         ENABLE_UPDATE_CHECK: true,
         ENABLE_AUTO_UPDATE: false,
         UPDATE_CHANNEL: DEFAULT_UPDATE_CHANNEL,
@@ -390,13 +407,38 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
         DISCORD_RICH_PRESENCE_ENABLED: false,
     });
     const [electronSettingsLoaded, setElectronSettingsLoaded] = useState(false);
+    // Keys stay in the main process; the renderer only knows which ones are saved, and the endpoint
+    // the OpenAI-compatible key is bound to. The GEMINI_API_KEY / OPENAI_API_KEY fields in
+    // electronSettings are drafts of a replacement key.
+    const [savedElectronAiCredentials, setSavedElectronAiCredentials] = useState({
+        AI_PROVIDER: 'gemini',
+        GEMINI_API_KEY: false,
+        OPENAI_API_KEY: false,
+        OPENAI_API_KEY_ENDPOINT: null as string | null,
+    });
     const [electronSaveStatus, setElectronSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
     const [updateStatus, setUpdateStatus] = useState<ElectronUpdateStatus | null>(null);
     const [discordPresenceStatus, setDiscordPresenceStatus] = useState<ElectronDiscordPresenceStatus | null>(null);
     const [cacheDirectory, setCacheDirectory] = useState<string>('');
     const [cacheDirectoryIsDefault, setCacheDirectoryIsDefault] = useState(true);
     const [cacheDirectoryStatus, setCacheDirectoryStatus] = useState<'idle' | 'choosing'>('idle');
+    const isElectronRuntime = typeof window !== 'undefined' && Boolean(window.electron);
+    const savedAiApiKey = savedElectronAiCredentials.AI_PROVIDER === 'openai'
+        ? savedElectronAiCredentials.OPENAI_API_KEY
+        : savedElectronAiCredentials.GEMINI_API_KEY;
+    const aiApiKeyStatus: 'loading' | 'configured' | 'missing' = !isElectronRuntime
+        ? 'configured'
+        : !electronSettingsLoaded
+            ? 'loading'
+            : savedAiApiKey
+                ? 'configured'
+                : 'missing';
 
+    useEffect(() => {
+        if (aiApiKeyStatus === 'missing' && themeGenerationSource === 'ai') {
+            onChangeThemeGenerationSource('cover');
+        }
+    }, [aiApiKeyStatus, onChangeThemeGenerationSource, themeGenerationSource]);
 
     // The four answers land while the window is still opening, and each one alone rendered the whole
     // window again. Read together and applied as one transition, they render it once, between frames.
@@ -417,8 +459,18 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
             const cacheDirectoryResult: ElectronCacheDirectoryResult | null = cacheDirectoryAnswer.status === 'fulfilled' ? cacheDirectoryAnswer.value : null;
             startTransition(() => {
                 if (settings) {
-                    const rest = settings;
-                    setElectronSettings(prev => ({ ...prev, ...rest }));
+                    const { AI_API_KEYS_CONFIGURED: configuredKeys, OPENAI_API_KEY_ENDPOINT: openaiKeyEndpoint, ...rest } = settings;
+                    setElectronSettings(prev => ({
+                        ...prev,
+                        ...rest,
+                        OPENAI_API_TEMPERATURE: String(rest.OPENAI_API_TEMPERATURE ?? '').trim() || DEFAULT_OPENAI_TEMPERATURE,
+                    }));
+                    setSavedElectronAiCredentials({
+                        AI_PROVIDER: settings.AI_PROVIDER === 'openai' ? 'openai' : 'gemini',
+                        GEMINI_API_KEY: configuredKeys?.GEMINI_API_KEY === true,
+                        OPENAI_API_KEY: configuredKeys?.OPENAI_API_KEY === true,
+                        OPENAI_API_KEY_ENDPOINT: typeof openaiKeyEndpoint === 'string' ? openaiKeyEndpoint : null,
+                    });
                 }
                 setElectronSettingsLoaded(true);
                 if (cacheDirectoryResult?.path) {
@@ -484,14 +536,67 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
 
     const saveElectronSettings = async () => {
         if ((window as any).electron) {
+            // What is saved is the number that was typed, so "0,7" is kept as 0.7 and the main process
+            // reads it as that; anything that is not a number from 0 to 2 falls back to the default.
+            const configuredTemperature = parseNumberText(electronSettings.OPENAI_API_TEMPERATURE);
+            const temperature = configuredTemperature !== null && configuredTemperature >= 0 && configuredTemperature <= 2
+                ? String(configuredTemperature)
+                : DEFAULT_OPENAI_TEMPERATURE;
             setElectronSaveStatus('saving');
+            setElectronSettings(prev => ({ ...prev, OPENAI_API_TEMPERATURE: temperature }));
+            // Only a newly typed key is sent; an empty field keeps the saved one (clearing is its own action).
+            const geminiKeyDraft = electronSettings.GEMINI_API_KEY.trim();
+            const openaiKeyDraft = electronSettings.OPENAI_API_KEY.trim();
+            if (geminiKeyDraft) {
+                await (window as any).electron.saveSettings('GEMINI_API_KEY', geminiKeyDraft);
+            }
+            // URL before key: a new OpenAI-compatible key is bound to the URL saved at that moment.
+            await (window as any).electron.saveSettings('OPENAI_API_URL', electronSettings.OPENAI_API_URL);
+            if (openaiKeyDraft) {
+                await (window as any).electron.saveSettings('OPENAI_API_KEY', openaiKeyDraft);
+            }
+            await (window as any).electron.saveSettings('OPENAI_API_MODEL', electronSettings.OPENAI_API_MODEL);
+            await (window as any).electron.saveSettings('OPENAI_API_TEMPERATURE', temperature);
+            await (window as any).electron.saveSettings('OPENAI_API_STREAM', electronSettings.OPENAI_API_STREAM === true);
+            await (window as any).electron.saveSettings('GEMINI_API_MODEL', electronSettings.GEMINI_API_MODEL);
+            await (window as any).electron.saveSettings('AI_PROVIDER_PRESET', electronSettings.AI_PROVIDER_PRESET);
+            await (window as any).electron.saveSettings('AI_PROVIDER', electronSettings.AI_PROVIDER);
+            await (window as any).electron.saveSettings('USE_SYSTEM_PROXY_FOR_AI', electronSettings.USE_SYSTEM_PROXY_FOR_AI);
             await (window as any).electron.saveSettings('ENABLE_UPDATE_CHECK', electronSettings.ENABLE_UPDATE_CHECK);
             await (window as any).electron.saveSettings('ENABLE_AUTO_UPDATE', electronSettings.ENABLE_AUTO_UPDATE);
             await (window as any).electron.saveSettings('UPDATE_CHANNEL', electronSettings.UPDATE_CHANNEL);
-            await (window as any).electron.saveSettings('DISCORD_RICH_PRESENCE_ENABLED', electronSettings.DISCORD_RICH_PRESENCE_ENABLED);
+            const savedSettings = await (window as any).electron.saveSettings('DISCORD_RICH_PRESENCE_ENABLED', electronSettings.DISCORD_RICH_PRESENCE_ENABLED);
+            const configuredKeys = savedSettings?.AI_API_KEYS_CONFIGURED;
+            setSavedElectronAiCredentials({
+                AI_PROVIDER: electronSettings.AI_PROVIDER === 'openai' ? 'openai' : 'gemini',
+                GEMINI_API_KEY: configuredKeys?.GEMINI_API_KEY === true,
+                OPENAI_API_KEY: configuredKeys?.OPENAI_API_KEY === true,
+                OPENAI_API_KEY_ENDPOINT: typeof savedSettings?.OPENAI_API_KEY_ENDPOINT === 'string'
+                    ? savedSettings.OPENAI_API_KEY_ENDPOINT
+                    : null,
+            });
+            // Drop the saved drafts so the field goes back to the "saved" placeholder; keep anything typed meanwhile.
+            setElectronSettings(prev => ({
+                ...prev,
+                GEMINI_API_KEY: prev.GEMINI_API_KEY.trim() === geminiKeyDraft ? '' : prev.GEMINI_API_KEY,
+                OPENAI_API_KEY: prev.OPENAI_API_KEY.trim() === openaiKeyDraft ? '' : prev.OPENAI_API_KEY,
+            }));
             setElectronSaveStatus('saved');
             setTimeout(() => setElectronSaveStatus('idle'), 2000);
         }
+    };
+
+    const handleClearAiApiKey = async (key: 'GEMINI_API_KEY' | 'OPENAI_API_KEY') => {
+        if (!window.electron?.saveSettings) {
+            return;
+        }
+        const settings = await window.electron.saveSettings(key, '');
+        setSavedElectronAiCredentials(prev => ({
+            ...prev,
+            [key]: settings?.AI_API_KEYS_CONFIGURED?.[key] === true,
+            OPENAI_API_KEY_ENDPOINT: typeof settings?.OPENAI_API_KEY_ENDPOINT === 'string' ? settings.OPENAI_API_KEY_ENDPOINT : null,
+        }));
+        setElectronSettings(prev => ({ ...prev, [key]: '' }));
     };
 
     const handleToggleDiscordPresence = async (enabled: boolean) => {
@@ -716,7 +821,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
             lyrics: formatBytes(usage.lyrics),
             cover: formatBytes(usage.cover),
             media: formatBytes(usage.media),
-            analysis: formatBytes(usage.analysis)
+            analysis: formatBytes(usage.analysis),
+            volumeBalance: formatBytes(usage.volumeBalance)
         });
         setMediaCount(usage.mediaCount);
     };
@@ -734,6 +840,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
 
     const handleClear = async (category: CacheCategory) => {
         setIsCleaning(category);
+        // 智能平衡's readings held in memory go with its stored ones, or they would be written back. First, so
+        // a write already sent lands before the clear and none is sent after it.
+        if (category === 'volumeBalance') clearBalanceRuntime();
         await clearCacheByCategory(category);
         // The drum hits' memory of which tracks are stored goes with the stored analyses.
         if (category === 'analysis') forgetSettledDrumHits();
@@ -796,15 +905,17 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     };
     const isAnySubviewOpen = showVisPlayground
         || showThemePark
+        || showSceneWindow
         || showLyricFilterSettings
         || showGlobalLyricOffset
+        || showAiHelpPrompt
         || showReleaseNotes;
 
     // Escape reaches this window only with none of its four dialogs open: they are sheets, and an
     // open sheet takes the key on the document and stops it (shared/Sheet.tsx). A menu or a pick
     // list that is open takes the key before this window hears it as well. The two work windows
     // leave Escape to their owner, so they are what it can find open here.
-    const isWorkWindowOpen = showVisPlayground || showThemePark;
+    const isWorkWindowOpen = showVisPlayground || showThemePark || showSceneWindow;
 
     const closeWorkWindows = () => {
         if (shouldCloseModalOnSubviewBack) {
@@ -813,6 +924,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
         }
         setShowVisPlayground(false);
         setShowThemePark(false);
+        setShowSceneWindow(false);
     };
 
     useEffect(() => {
@@ -931,6 +1043,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
             songThemeAutoSwitchEnabled,
             songThemeAutoGenerateEnabled,
             themeGenerationSource,
+            aiApiKeyStatus,
             onApplyDefaultTheme,
             onApplyCustomTheme,
             onToggleCustomThemePreferred,
@@ -940,6 +1053,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
         },
         onOpenVisPlayground: () => setShowVisPlayground(true),
         onOpenThemePark: () => setShowThemePark(true),
+        onOpenSceneWindow: () => setShowSceneWindow(true),
         onToggleTransparentPlayerBackground: resolvedToggleTransparentPlayerBackground,
         viewProps: {
             appearance: {
@@ -1023,6 +1137,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                     electronSaveStatus,
                     electronSettings,
                     onCheckForUpdates: handleCheckForUpdates,
+                    onClearAiApiKey: handleClearAiApiKey,
                     onDownloadUpdate: handleDownloadUpdate,
                     onInstallUpdate: handleInstallUpdate,
                     onOpenBaiduDownload: handleOpenBaiduDownload,
@@ -1031,6 +1146,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                     onSaveElectronSettings: saveElectronSettings,
                     onToggleAutoUpdate: handleToggleAutoUpdate,
                     onToggleUpdateCheck: handleToggleUpdateCheck,
+                    savedAiApiKeys: {
+                        GEMINI_API_KEY: savedElectronAiCredentials.GEMINI_API_KEY,
+                        OPENAI_API_KEY: savedElectronAiCredentials.OPENAI_API_KEY,
+                    },
+                    savedOpenAIKeyEndpoint: savedElectronAiCredentials.OPENAI_API_KEY_ENDPOINT,
                     setElectronSettings,
                     updateBadgeLabel,
                     updateStatus,
@@ -1112,6 +1232,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                                     <div className="st-page-in">
                                         <HelpPage
                                             onOpenReleaseNotes={() => setShowReleaseNotes(true)}
+                                            onOpenAiHelp={() => setShowAiHelpPrompt(true)}
                                             onProjectLabelClick={handleAuthorLabelClick}
                                         />
                                     </div>
@@ -1199,6 +1320,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                         hideTranslationSubtitle={hidePlayerTranslationSubtitle}
                         showSubtitleTranslation={showSubtitleTranslation}
                         subtitleContentMode={subtitleContentMode}
+                        subtitleOverlayLayout={subtitleOverlayLayout}
                         subtitleOverlayOpacity={subtitleOverlayOpacity}
                         subtitleOverlayBackground={subtitleOverlayBackground}
                         subtitleUpcomingLyricsBlur={subtitleUpcomingLyricsBlur}
@@ -1233,6 +1355,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                         onToggleHideTranslationSubtitle={onToggleHidePlayerTranslationSubtitle}
                         onToggleShowSubtitleTranslation={onToggleShowSubtitleTranslation}
                         onSubtitleContentModeChange={onSubtitleContentModeChange}
+                        onSubtitleOverlayLayoutChange={onSubtitleOverlayLayoutChange}
                         onSubtitleOverlayOpacityChange={setSubtitleOverlayOpacity}
                         onToggleSubtitleOverlayBackground={onToggleSubtitleOverlayBackground}
                         onToggleSubtitleUpcomingLyricsBlur={onToggleSubtitleUpcomingLyricsBlur}
@@ -1271,6 +1394,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                         monetPortraitImage={monetPortraitImage}
                         showSubtitleTranslation={showSubtitleTranslation}
                         subtitleContentMode={subtitleContentMode}
+                        subtitleOverlayLayout={subtitleOverlayLayout}
                         lyricsFontStyle={lyricsFontStyle}
                         lyricsFontScale={lyricsFontScale}
                         lyricsFontWeight={lyricsFontWeight}
@@ -1287,13 +1411,21 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                     />
                 )}
             </AnimatePresence>
+            <AnimatePresence>
+                {showSceneWindow && (
+                    <SceneWindow
+                        isDaylight={isDaylight}
+                        theme={theme}
+                        onClose={() => closeSubviewOrModal(() => setShowSceneWindow(false))}
+                    />
+                )}
+            </AnimatePresence>
 
             <LyricFilterSettingsModal
                 isOpen={showLyricFilterSettings}
                 isDaylight={isDaylight}
                 currentSongTitle={currentSongTitle}
-                initialPattern={lyricFilterPattern}
-                initialFilterEnabled={lyricFilterEnabled}
+                initialRules={lyricLineRules}
                 initialStaffPolicy={lyricStaffPolicy}
                 initialStaffMinDwellSeconds={lyricStaffMinDwellSeconds}
                 initialStaffAbsorbMode={lyricStaffAbsorbMode}
@@ -1308,6 +1440,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                 lyrics={currentLyrics}
                 lyricCurrentTime={lyricCurrentTime}
                 onClose={() => closeSubviewOrModal(() => setShowGlobalLyricOffset(false))}
+            />
+            <AiHelpPromptModal
+                isOpen={showAiHelpPrompt}
+                isDaylight={isDaylight}
+                onClose={() => setShowAiHelpPrompt(false)}
             />
             <ReleaseNotesDialog
                 isOpen={showReleaseNotes}

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
-import { readCloudThemeFromLyrics } from '../services/aiText';
+import { isMissingAiApiKeyError, readCloudThemeFromLyrics } from '../services/aiText';
 import { saveToCache } from '../services/db';
 import { DualTheme, LyricData, SongResult, StatusMessage, Theme, ThemeMode } from '../types';
 import { getCachedThemeState, getCachedThemeStateForSong, getLastDualTheme, getLastLegacyTheme, type ThemeCacheSongKey } from '../services/themeCache';
@@ -127,6 +127,54 @@ const readStoredCustomPreferred = () => localStorage.getItem(CUSTOM_THEME_PREFER
 const getSelectedDualTheme = (dualTheme: DualTheme, isDaylight: boolean) => (
     isDaylight ? dualTheme.light : dualTheme.dark
 );
+
+/** The theme the app shows in a mode (`isDaylight`), from the song's theme sources. */
+export const resolveControllerTheme = ({
+    bgMode,
+    aiTheme,
+    legacyTheme,
+    customTheme,
+    isDaylight,
+    defaultTheme,
+    daylightTheme,
+    previousTheme,
+}: {
+    bgMode: ThemeMode;
+    aiTheme: DualTheme | null;
+    legacyTheme: Theme | null;
+    customTheme: DualTheme | null;
+    isDaylight: boolean;
+    defaultTheme: Theme;
+    daylightTheme: Theme;
+    previousTheme: Theme;
+}): Theme => {
+    const normalizeTheme = (nextTheme: Theme) => applyStoredAnimationIntensityToTheme(nextTheme);
+
+    if (bgMode === 'custom' && customTheme) {
+        return normalizeTheme(getSelectedDualTheme(customTheme, isDaylight));
+    }
+
+    if (bgMode === 'ai') {
+        if (aiTheme) {
+            return normalizeTheme(getSelectedDualTheme(aiTheme, isDaylight));
+        }
+
+        if (legacyTheme) {
+            return normalizeTheme(legacyTheme);
+        }
+    }
+
+    // The default source is the built-in theme itself: an AI or legacy theme stays loaded so the
+    // user can switch back to it, but lends none of its colors here (#947).
+    return normalizeTheme(resolveBgModeTheme({
+        mode: bgMode === 'custom' ? 'default' : bgMode,
+        aiTheme,
+        isDaylight,
+        defaultTheme,
+        daylightTheme,
+        previousTheme,
+    }));
+};
 
 export function useThemeController({
     defaultTheme,
@@ -257,41 +305,20 @@ export function useThemeController({
     }, [aiTheme, bgMode, customTheme, legacyTheme]);
 
     useEffect(() => {
-        setTheme(previousTheme => {
-            const normalizeTheme = (nextTheme: Theme) => applyStoredAnimationIntensityToTheme(nextTheme);
-
-            if (bgMode === 'custom' && customTheme) {
-                return normalizeTheme(getSelectedDualTheme(customTheme, isDaylight));
-            }
-
-            if (bgMode === 'ai') {
-                if (aiTheme) {
-                    return normalizeTheme(getSelectedDualTheme(aiTheme, isDaylight));
-                }
-
-                if (legacyTheme) {
-                    return normalizeTheme(legacyTheme);
-                }
-            }
-
-            const baseTheme = getBaseTheme();
-            if (legacyTheme) {
-                return normalizeTheme({
-                    ...legacyTheme,
-                    backgroundColor: baseTheme.backgroundColor,
-                });
-            }
-
-            return normalizeTheme(resolveBgModeTheme({
-                mode: bgMode === 'custom' ? 'default' : bgMode,
-                aiTheme,
-                isDaylight,
-                defaultTheme,
-                daylightTheme,
-                previousTheme,
-            }));
-        });
+        setTheme(previousTheme => resolveControllerTheme({
+            bgMode, aiTheme, legacyTheme, customTheme, isDaylight, defaultTheme, daylightTheme, previousTheme,
+        }));
     }, [aiTheme, bgMode, customTheme, daylightTheme, defaultTheme, isDaylight, legacyTheme]);
+
+    // The song's light and dark themes: the pair `theme` is picked from by the app's mode (a scene takes
+    // the one that fits its own picture, whatever that mode).
+    const songThemePair = useMemo((): DualTheme => {
+        const sources = { bgMode, aiTheme, legacyTheme, customTheme, defaultTheme, daylightTheme, previousTheme: theme };
+        return {
+            light: resolveControllerTheme({ ...sources, isDaylight: true }),
+            dark: resolveControllerTheme({ ...sources, isDaylight: false }),
+        };
+    }, [aiTheme, bgMode, customTheme, daylightTheme, defaultTheme, legacyTheme, theme]);
 
     const handleToggleDaylight = (isLight: boolean) => {
         setDaylightPreference(isLight);
@@ -723,7 +750,18 @@ export function useThemeController({
         } catch (error: unknown) {
             // 只可能是意料之外的事（存储写失败之类）：照样给一个封面主题，不让画面空着。
             console.error(error);
-            return await applyCoverDerivedTheme(currentSong, shouldApply, 'fallback');
+            if (isMissingAiApiKeyError(error)) {
+                return await applyCoverDerivedTheme(
+                    currentSong,
+                    shouldApply,
+                    'fallback',
+                );
+            }
+
+            if (shouldApply()) {
+                setStatusMsg({ type: 'error', text: t('status.themeGenerationFailed') });
+            }
+            return { status: 'failed' };
         } finally {
             themeGenerationSongKeysRef.current.delete(songKey);
             endThemeGeneration();
@@ -767,6 +805,7 @@ export function useThemeController({
 
     return {
         theme,
+        songThemePair,
         aiTheme,
         customTheme,
         hasCustomTheme: Boolean(customTheme),

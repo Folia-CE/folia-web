@@ -1,6 +1,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { useShallow } from 'zustand/react/shallow';
+import { ChosenSceneName } from '../../../scenes/settings/SceneWindow';
 import { getVisualizerModeLabel } from '../../../visualizer/registry';
 import { usePlayerChromeSettingsStore } from '../../../../stores/usePlayerChromeSettingsStore';
 import { openSettings } from '../../../../stores/useSettingsModalStore';
@@ -8,13 +9,13 @@ import { useThemeSettingsStore } from '../../../../stores/useThemeSettingsStore'
 import { useVisualizerSettingsStore } from '../../../../stores/useVisualizerSettingsStore';
 import { Button, Group, Reveal, Row, Segmented, Toggle, Value, option, type SettingsGroupDef, type SettingsOptionDef } from '../kit';
 import { settingsAnchorSubview } from '../navigation/settingsAnchorModel';
-import CloudCacheSettings from './ai/CloudCacheSettings';
-import { CLOUD_CACHE_OPTIONS, isCloudCacheSettingsVisible } from './ai/cloudCacheOptions';
 import { useSettingsPage } from './settingsPageContext';
 
 // src/components/modal/settings/pages/AppearancePage.tsx
-// The 外观 page: which lyric animation the player uses, light or dark, the colour theme, how a
-// song's own theme is made and applied, and (desktop app) the AI provider that makes those themes.
+// The 外观 page: which lyric animation the player uses, which scene (its window holds each scene's
+// settings and sound tracing), light or dark, the colour theme, and how a
+// song's own theme is made and applied. The AI provider those themes are generated with is not
+// here: it is one connection shared by every AI feature, on the AI service page (pages/AiServicePage).
 // The lyric animation workbench and the theme colour editor are the existing overlays; their rows
 // here only open them.
 
@@ -24,6 +25,9 @@ const SONG_THEME: SettingsGroupDef = { id: 'songTheme', titleKey: 'options.setti
 
 const O = {
     lyricsAnimation: option(LYRICS, 'lyricsAnimationAdjust', 'options.lyricsAnimationAdjust'),
+    scene: option(LYRICS, 'scene', 'ui.scene'),
+    // Not a row of its own: it lives in the scene window, so a search for it lands on the group with the scene row.
+    soundTracing: option(LYRICS, 'soundTracing', 'ui.soundTracing'),
     daylight: option(THEME, 'daylightMode', 'options.daylightMode'),
     preset: option(THEME, 'themePreset', 'options.themePresets'),
     themePark: option(THEME, 'openThemePark', 'options.openThemePark'),
@@ -34,13 +38,13 @@ const O = {
 
 };
 
-export const OPTIONS: SettingsOptionDef[] = [...Object.values(O), ...CLOUD_CACHE_OPTIONS];
+export const OPTIONS: SettingsOptionDef[] = Object.values(O);
 
 type DaylightChoice = 'light' | 'dark' | 'system';
 
 const AppearancePage: React.FC = () => {
     const { t } = useTranslation();
-    const { isElectron, themeControls, onOpenVisPlayground, onOpenThemePark } = useSettingsPage();
+    const { themeControls, onOpenVisPlayground, onOpenThemePark, onOpenSceneWindow } = useSettingsPage();
     const { isDaylight, followSystemTheme, setDaylightPreference, setFollowSystemTheme } = useThemeSettingsStore(useShallow(state => ({
         isDaylight: state.isDaylight,
         followSystemTheme: state.followSystemTheme,
@@ -57,6 +61,9 @@ const AppearancePage: React.FC = () => {
                 {nativeBlurEnabled && <Row notice={t('options.nativeBlurBackgroundNotice')} />}
                 <Row option={O.lyricsAnimation} hint={t('options.lyricsRendererDesc')} onClick={onOpenVisPlayground}>
                     <Value>{randomEnabled ? t('ui.visualizerRandom') : getVisualizerModeLabel(visualizerMode, t)}</Value>
+                </Row>
+                <Row option={O.scene} tag={t('ui.sceneBeta')} onClick={onOpenSceneWindow}>
+                    <Value><ChosenSceneName /></Value>
                 </Row>
             </Group>
 
@@ -107,19 +114,24 @@ const AppearancePage: React.FC = () => {
                 </Reveal>
                 <Row
                     option={O.source}
-                    note={t(themeControls.themeGenerationSource === 'cover' ? 'options.themeGenerationSourceCoverDesc' : 'options.themeGenerationSourceCloudDesc')}
+                    note={t(themeControls.themeGenerationSource === 'cover' ? 'options.themeGenerationSourceCoverDesc' : 'options.themeGenerationSourceAiDesc')}
                 >
-                    {/* `ai` 这个取值留着了（存储与导出格式里就是它），但现在说的是「云端缓存」：
-                        生成那条路已经删掉，主题只从公共云缓存里取别人算过的结果。 */}
                     <Segmented
                         value={themeControls.themeGenerationSource}
                         options={[
-                            { value: 'ai', label: t('options.themeGenerationSourceCloud') },
+                            { value: 'ai', label: t('options.themeGenerationSourceAi'), disabled: themeControls.aiApiKeyStatus !== 'configured' },
                             { value: 'cover', label: t('options.themeGenerationSourceCover') },
                         ]}
                         onChange={themeControls.onChangeThemeGenerationSource}
                     />
                 </Row>
+                <Reveal when={themeControls.aiApiKeyStatus === 'missing'}>
+                    <Row sub notice={t('options.themeGenerationSourceAiUnavailable')}>
+                        <Button onClick={() => openSettings('options', settingsAnchorSubview('electronSettings'), null, 'electronSettings')}>
+                            {t('options.configureAiApiKey')}
+                        </Button>
+                    </Row>
+                </Reveal>
                 <Row option={O.preferCustom} hint={t('options.preferCustomThemeDesc')}>
                     <Toggle
                         checked={themeControls.isCustomThemePreferred}
@@ -128,9 +140,6 @@ const AppearancePage: React.FC = () => {
                     />
                 </Row>
             </Group>
-
-            {/* 云缓存：只有网页版画。桌面端主题由主进程生成，这层浏览器缓存用不上。 */}
-            {isCloudCacheSettingsVisible() && <CloudCacheSettings />}
         </>
     );
 };

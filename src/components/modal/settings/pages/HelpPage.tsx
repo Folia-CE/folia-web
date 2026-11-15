@@ -10,6 +10,7 @@ import { HELP_TAB_PLAYER_CONTROLS, HELP_TAB_PRIMARY_SHORTCUTS } from '../../user
 import { Button, CopyButton, CopyValue, Group, Keys, Row, type SettingsGroupDef } from '../kit';
 import { openOutsideLink } from '../../../../utils/system/outsideLink';
 import { FoundUpdateRow } from './FoundUpdateRow';
+import { ChinaDrivesRow } from './ChinaDrivesRow';
 import { iconLabel } from './iconLabel';
 
 // src/components/modal/settings/pages/HelpPage.tsx
@@ -96,6 +97,8 @@ type HelpPageProps = {
     /** Opens the 遇到问题？ dialog. */
     /** A click on the "Project:" label; the settings window counts them. */
     onProjectLabelClick: () => void;
+    /** 打开 AI 帮助弹窗（上游恢复 AI 生成后的入口；弹窗本身可空实现）。 */
+    onOpenAiHelp?: () => void;
 };
 
 const HelpPage: React.FC<HelpPageProps> = ({ onOpenReleaseNotes, onProjectLabelClick }) => {
@@ -171,6 +174,7 @@ const HelpPage: React.FC<HelpPageProps> = ({ onOpenReleaseNotes, onProjectLabelC
                     <Row sub notice={t(BUILD_KIND === 'unofficial' ? 'options.unofficialBuildNotice' : 'options.selfHostedBuildNotice')} />
                 )}
                 <FoundUpdateRow sub />
+                <ChinaDrivesRow sub quiet />
                 <Row
                     label={(
                         // The settings window counts the clicks and shows the cat at the seventh.

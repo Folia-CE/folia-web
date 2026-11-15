@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { USER_GUIDE_AUTO_OPEN_VERSION } from '../components/modal/userGuideContent';
+import { skipsStartupExperience } from '../dev/devLaunchFlags';
 import { hasOnboardingLibrarySuiteChoice } from '../library/app/librarySuiteChoice';
 import { requestPlaybackEntryViewPrompt, usePlaybackEntryViewStore } from '../stores/usePlaybackEntryViewStore';
 import { useSettingsModalStore } from '../stores/useSettingsModalStore';
@@ -103,7 +104,8 @@ export const useStartupExperienceGate = () => {
     const [isFreeSoftwareNoticeOpen, setIsFreeSoftwareNoticeOpen] = useState(false);
     const appVersion = typeof __APP_VERSION__ === 'undefined' ? null : __APP_VERSION__;
 
-    const nextStep = resolveStartupExperienceStep({
+    // Dev shortcut (devLaunchFlags.ts): nothing opens and nothing is marked seen, so turning it off brings the sequence back.
+    const nextStep = skipsStartupExperience ? null : resolveStartupExperienceStep({
         needsFreeSoftwareNotice: !hasSeenFreeSoftwareNotice,
         isFreeSoftwareNoticeOpen,
         isCurrentRelease: Boolean(appVersion && USER_GUIDE_AUTO_OPEN_VERSION === appVersion),

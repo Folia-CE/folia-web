@@ -247,7 +247,13 @@ const startRelayListener = (): void => {
         relayPending.delete(data.id);
         clearTimeout(pending.timer);
         // v2 协议：{ ok, data?, error? }（脚本 v2，对齐 sonnet 的 foliaExtensionBridge）。
-        // ok=false 的桥内部失败回落服务器桥重发；ok=true 的 data 才是接口答复。
+        // 兼容 v1 旧脚本（用户浏览器里还没更新完）：v1 的 result 直接带 answer、没有 ok
+        // 字段 —— 按 v1 语义取 answer。v1 报不出桥代码版本（诊断里显示 unknown），
+        // 安装引导据此提示更新到 v2。
+        if (typeof data.ok !== 'boolean') {
+            pending.resolve(data.answer);
+            return;
+        }
         if (data.ok === false) {
             pending.resolve(undefined);
             return;

@@ -40,12 +40,15 @@ const measureRow = (list: HTMLElement, row: HTMLElement): Box => {
         x: (rowRect.left - listRect.left) / scale - list.clientLeft + list.scrollLeft,
         y: (rowRect.top - listRect.top) / scale - list.clientTop + list.scrollTop,
         w: rowRect.width / scale,
-        h: height,
+        h: rowRect.height / scale,
     };
 };
 
+/** 量出来的数差不到 0.01px 算没变：除掉缩放的那一下有浮点误差。 */
 const sameBox = (a: Box | null, b: Box | null): boolean => (
-    a !== null && b !== null && a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h
+    a !== null && b !== null
+    && Math.abs(a.x - b.x) < 0.01 && Math.abs(a.y - b.y) < 0.01
+    && Math.abs(a.w - b.w) < 0.01 && Math.abs(a.h - b.h) < 0.01
 );
 /**
  * 置灰那一行说的原因，两种各说各的：

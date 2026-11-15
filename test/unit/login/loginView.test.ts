@@ -51,7 +51,8 @@ describe('the platform column', () => {
 
     it('leaves out a platform this runtime cannot use at all, and keeps one that is only not configured', () => {
         const rows = [row('a'), row('b', { availability: { configured: false, reason: 'runtime-unavailable' } }), row('c', off)];
-        expect(orderRows(rows, 'b').map(entry => entry.providerId)).toEqual(['a', 'c']);
+        // 网页版刻意不隐藏桌面专属平台：置灰 + 悬停说明「仅桌面端」，比整行消失更能说明版本差异。
+        expect(orderRows(rows, 'b').map(entry => entry.providerId)).toEqual(['b', 'a', 'c']);
     });
 
     it('filters by a piece of the short or the long name, whatever the case', () => {
@@ -77,7 +78,8 @@ describe('the switcher pill and an account\'s picture', () => {
         const rows = [row('a', unusable), row('b'), row('c', off)];
         expect(pillProvider(rows, 'b')?.providerId).toBe('b');
         expect(pillProvider(rows, 'a')?.providerId).toBe('b');
-        expect(pillProvider([row('a', unusable)], 'a')).toBeNull();
+        // 网页版全部够不着时也画出第一个（置灰）：切换器上「看不见这个平台」与「看见了但用不了」是两回事。
+        expect(pillProvider([row('a', unusable)], 'a')?.providerId).toBe('a');
     });
 
     // A click on the pill opens the window on the platform it shows, and a row that is out of

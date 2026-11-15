@@ -52,6 +52,8 @@ TODO.MD
 commit.md
 .codebuff-ai/reasson/conf.jsonc
 scripts/*
+# 构建期要用的脚本要进版本库（CI 要跑）：只放行这一支。
+!scripts/build-bridge-userscript.mjs
 docs/TODO.md
 design/
 plan/

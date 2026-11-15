@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Puzzle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Sheet, SheetButton } from '../../shared/Sheet';
-import { isRelayReady } from '../../../services/webBridge';
+import { probeRelayReady } from '../../../services/webBridge';
 
 // src/components/app/notices/RelayInstallNotice.tsx
 // 篡改猴中继脚本的安装引导：纯网页环境里，弹窗问一次要不要装 public/folia-bridge-relay.user.js。
@@ -33,13 +33,14 @@ export const RelayInstallNotice: React.FC = () => {
         } catch (_) {
             return;
         }
-        let timer: ReturnType<typeof setTimeout> | null = null;
-        // 等一小段宽限再问一次握手：脚本在 document-start 就应答，1.5 秒内没应就是没装。
-        timer = setTimeout(() => {
-            if (!isRelayReady()) setIsOpen(true);
-        }, READY_GRACE_MS);
+        let cancelled = false;
+        // 主动 ping 一次再下结论：脚本应答可能晚于页面首帧，同步读标志会误判「没装」。
+        // waitForRelayReady 内部先 ping 后等 pong，1.5 秒没应答就是真没装。
+        void probeRelayReady(READY_GRACE_MS).then((ready) => {
+            if (!cancelled && !ready) setIsOpen(true);
+        });
         return () => {
-            if (timer) clearTimeout(timer);
+            cancelled = true;
         };
     }, []);
 

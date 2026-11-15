@@ -99,27 +99,19 @@
         try { return new URL(url).host || 'unknown'; } catch (_) { return 'unparseable'; }
     };
 
-    /** 根据 provider 拼上游 URL；payload 里带 path/query 时按桥的形状接上。 */
+    /** 根据 provider 拼上游 URL。
+     *
+     * 只支持 qq / qq_raw：它们的网关 URL 固定（musicu.fcg），body 是明文 JSON，Cookie 头
+     * 原样可带 —— 瘦中继不需要任何业务逻辑就能转发。
+     *
+     * netease / kugou / bodian 明确不支持：那几家的请求要么走 weapi/eapi 加密、要么带
+     * signQuery 签名，加密和签名都在桥的接口代码里（src/webBridge/api/*.js），中继复刻不了
+     * —— 复刻了就不是瘦中继，而且两边要永远同步。这些 provider 在页面侧就不该进中继；
+     * 这里再兜一层底，答 UNSUPPORTED 让页面回落服务器桥。 */
     const buildUrl = (payload) => {
         const provider = String(payload && payload.provider || '').trim().toLowerCase();
-        const base = PROVIDER_BASE[provider];
-        if (!base) return '';
-        // qq / qq_raw 是固定的 musicu 网关，path/query 不参与拼接（body 在 payload.body 里）。
-        if (provider === 'qq' || provider === 'qq_raw') return base;
-        // 其余按桥的 parseInput：path（缺省用 operation）+ query 拼在基址后面。
-        const path = String(payload.path || payload.operation || '/').trim() || '/';
-        let search = '';
-        const query = payload.query;
-        if (query && typeof query === 'object') {
-            const pairs = [];
-            for (const [key, value] of Object.entries(query)) {
-                if (value === undefined || value === null) continue;
-                pairs.push(`${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`);
-            }
-            if (pairs.length) search = `?${pairs.join('&')}`;
-        }
-        const joiner = base.endsWith('/') && path.startsWith('/') ? path.slice(1) : (path.startsWith('/') || base.endsWith('/') ? '' : '/');
-        return `${base}${joiner}${path}${search}`;
+        if (provider !== 'qq' && provider !== 'qq_raw') return '';
+        return PROVIDER_BASE.qq;
     };
 
     /** 会话可能是 Cookie 头字符串、[{name,value}] 或 {name:value}，统一归一成 Cookie 头字符串。 */

@@ -297,7 +297,13 @@ export const readBridgeSession = (answer: unknown): string => {
  */
 export const requestWebBridge = async <T = unknown>(payload: BridgePayload): Promise<T> => {
     const relayAnswer = await requestViaRelay(payload);
-    if (relayAnswer !== undefined) return relayAnswer as T;
+    // 中继答了「协议级失败」（不认识这个 provider、网络不通、上游答非 JSON）就不把坏答案
+    // 交给上层：回落服务器桥重发一次。真正的上游业务错误（码、消息）不是协议错误，
+    // 原样上交 —— 上层 transport 只看一套分支。
+    const relayProtocolError = relayAnswer !== null
+        && typeof relayAnswer === 'object'
+        && '__foliaBridgeError' in (relayAnswer as Record<string, unknown>);
+    if (relayAnswer !== undefined && !relayProtocolError) return relayAnswer as T;
 
     const response = await fetch(BRIDGE_ROUTE, {
         method: 'POST',
@@ -321,3 +327,12 @@ export const WEB_BRIDGE_LABEL = '本机（CORS 服务，无自建后端）';
 
 /** 测试与诊断用：中继握手现在成功了吗。 */
 export const isRelayReady = (): boolean => relayReady;
+
+/**
+ * 主动问一次脚本在不：发 ping，等 pong/ready 到来（或超时）。
+ *
+ * 页面启动早于脚本应答时会错过 ready 消息（脚本 @run-at document-start，但注入的
+ * 时机仍可能晚于页面首个模块加载完），而同步的 `isRelayReady` 只读标志，永远 false。
+ * 安装引导这类「判定装没装」的场景必须主动 ping 一次再下结论。
+ */
+export const probeRelayReady = (timeoutMs = 1500): Promise<boolean> => waitForRelayReady(timeoutMs);

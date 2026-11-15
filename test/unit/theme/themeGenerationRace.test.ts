@@ -17,6 +17,8 @@ const io = vi.hoisted(() => ({
 vi.mock('@/services/aiText', async (importOriginal) => ({
     ...await importOriginal<typeof import('@/services/aiText')>(),
     generateThemeFromLyrics: io.generate,
+    // 云缓存前置：单测里一律「云端没有这首」，让用例聚焦生成路本身。
+    readCloudThemeFromLyrics: vi.fn(async () => null),
 }));
 vi.mock('@/services/db', () => ({ saveToCache: io.save }));
 vi.mock('@/services/themeCache', () => ({

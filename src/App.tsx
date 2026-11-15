@@ -694,7 +694,6 @@ export default function App() {
         applyDefaultTheme,
         restoreCachedThemeForSong,
         generateAITheme,
-        applyCloudTheme,
         getThemeParkSeedTheme,
         saveCustomDualTheme,
         saveEditedAiDualTheme,
@@ -1939,7 +1938,6 @@ export default function App() {
         isLyricsLoading,
         themeGenerationSource,
         generateAITheme,
-        applyCloudTheme,
     });
     // Loads the playing song's saved word segmentation into the store the lyric setter reads.
     useLyricWordSegmentation();

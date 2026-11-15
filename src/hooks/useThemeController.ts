@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
-import { isMissingAiApiKeyError, readCloudThemeFromLyrics } from '../services/aiText';
+import { generateThemeFromLyrics, isMissingAiApiKeyError, readCloudThemeFromLyrics } from '../services/aiText';
 import { saveToCache } from '../services/db';
 import { DualTheme, LyricData, SongResult, StatusMessage, Theme, ThemeMode } from '../types';
 import { getCachedThemeState, getCachedThemeStateForSong, getLastDualTheme, getLastLegacyTheme, type ThemeCacheSongKey } from '../services/themeCache';
@@ -635,47 +635,6 @@ export function useThemeController({
         return { status: 'generated', applied: true };
     };
 
-    /**
-     * 把云缓存取回的主题落到界面上。
-     *
-     * 与 `generateAITheme` 的区别：这里**没有生成**，主题是别人算好的，直接落盘 + 应用。
-     * 所以它不看 AI 主题开关，也不需要 Key —— 这正是云缓存存在的意义。
-     *
-     * 落盘用与生成完全相同的那一套（本地缓存 + 跨设备同步），
-     * 这样下一次换回这首歌时走的是普通缓存，不会再问云端。
-     */
-    const applyCloudTheme = async (song: SongResult, theme: DualTheme): Promise<void> => {
-        const normalized = applyStoredAnimationIntensityToDualTheme(sanitizeDualTheme(theme));
-        await saveToCache(`dual_theme_${getPlaybackSongKey(song)}`, normalized);
-        saveSyncedThemeWithoutBlocking(song, normalized, 'auto');
-
-        const latestSong = usePlaybackStore.getState().currentSong;
-        const latestSongKey = latestSong ? getPlaybackSongKey(latestSong) : '__no_song__';
-        // 取回来的路上已经换歌了：存进它自己的缓存就好，不要动现在这一首的画面。
-        if (latestSongKey !== getPlaybackSongKey(song)) return;
-
-        setCurrentSongHasLocalAiTheme(true);
-        applyDualTheme(normalized);
-        const selected = getSelectedDualTheme(normalized, isDaylight);
-        setStatusMsg({
-            type: 'success',
-            text: t('status.cloudThemeApplied', { themeName: selected.name }),
-        });
-    };
-
-    /**
-     * 给当前这首歌定一个主题。
-     *
-     * 现在只有两个来源，按顺序试：
-     *   1. **云缓存** —— 别人算过的同一份歌词，直接拿来用；
-     *   2. **封面取色** —— 云端也没有这首歌，就从封面上取颜色。
-     *
-     * 没有第三条了：AI 生成那条路整个删掉了（见 services/aiText.ts）。所以这个函数
-     * 不会失败 —— 最差也是封面主题，不需要任何 Key、不依赖任何外部模型。
-     *
-     * 名字与 `themeGenerationSongKeysRef` 这些留着旧的叫法，是因为它们描述的是
-     * 「给这首歌定主题」这件事，而不是「去调模型」；调用点遍布整个应用，改名只会制造噪音。
-     */
     const generateAITheme = async (
         lyrics: LyricData | null,
         currentSong: SongResult | null,
@@ -698,7 +657,8 @@ export function useThemeController({
         beginThemeGeneration();
         setStatusMsg({ type: 'info', text: t('status.generatingTheme') });
         try {
-            // 用户明确选了「按封面」：直接从封面来，不必绕一趟云端。
+            // The cover source never touches the model, so it also never needs a lyric prompt:
+            // an instrumental with no title still gets a theme from its artwork.
             if (themeGenerationSource === 'cover') {
                 return await applyCoverDerivedTheme(
                     currentSong,
@@ -712,18 +672,44 @@ export function useThemeController({
             const isPureMusic = Boolean(currentSong?.isPureMusic) || isPureMusicLyricText(allText);
             const promptText = (isPureMusic ? songTitle : allText) || allText;
 
-            // 连歌词都没有（也没歌名）就走封面：纯音乐、还没解析出歌词的，都归这一档。
             if (!promptText) {
-                return await applyCoverDerivedTheme(currentSong, shouldApply, 'fallback');
+                if (source === 'manual') {
+                    setStatusMsg({ type: 'error', text: t('status.themeGenerationFailed') });
+                }
+                return { status: 'skipped', reason: 'empty-prompt' };
             }
 
+            // 先问云缓存：这首有人算过就直接用，不再烧一次 AI 调用（开关与 Key 都不看）。
+            // 没命中才走下面的生成路 —— 恢复 AI 生成之后，云缓存是它的省钱前置，不是替代。
             const cachedTheme = await readCloudThemeFromLyrics({ lyricSource: promptText, isPureMusic, songTitle });
-            if (!cachedTheme) {
-                // 云端没有这首 —— 这就是「最终结果」，不是错误。退回封面取色。
-                return await applyCoverDerivedTheme(currentSong, shouldApply, 'fallback');
+            if (cachedTheme) {
+                const normalizedCached = applyStoredAnimationIntensityToDualTheme(sanitizeDualTheme(cachedTheme));
+                if (currentSong) {
+                    await saveToCache(`dual_theme_${getPlaybackSongKey(currentSong)}`, normalizedCached);
+                    saveSyncedThemeWithoutBlocking(currentSong, normalizedCached, source === 'auto' ? 'auto' : 'manual');
+                }
+                if (!shouldApply()) {
+                    return { status: 'generated', applied: false };
+                }
+                if (currentSong) {
+                    setCurrentSongHasLocalAiTheme(true);
+                }
+                applyDualTheme(normalizedCached);
+                const selectedCached = getSelectedDualTheme(normalizedCached, isDaylight);
+                setStatusMsg({
+                    type: 'success',
+                    text: bgMode === 'custom' && customTheme
+                        ? t('notifications.aiThemeUpdatedCustomPreferred')
+                        : t('status.cloudThemeApplied', { themeName: selectedCached.name }),
+                });
+                return { status: 'generated', applied: true };
             }
 
-            const normalizedDualTheme = applyStoredAnimationIntensityToDualTheme(sanitizeDualTheme(cachedTheme));
+            const dualTheme = await generateThemeFromLyrics(promptText, {
+                isPureMusic,
+                songTitle: songTitle || undefined,
+            });
+            const normalizedDualTheme = applyStoredAnimationIntensityToDualTheme(sanitizeDualTheme(dualTheme));
             if (currentSong) {
                 await saveToCache(`dual_theme_${getPlaybackSongKey(currentSong)}`, normalizedDualTheme);
                 saveSyncedThemeWithoutBlocking(currentSong, normalizedDualTheme, source === 'auto' ? 'auto' : 'manual');
@@ -743,12 +729,11 @@ export function useThemeController({
                 type: 'success',
                 text: bgMode === 'custom' && customTheme
                     ? t('notifications.aiThemeUpdatedCustomPreferred')
-                    : t('status.cloudThemeApplied', { themeName: selectedTheme.name }),
+                    : t('status.themeApplied', { themeName: selectedTheme.name }),
             });
 
             return { status: 'generated', applied: true };
         } catch (error: unknown) {
-            // 只可能是意料之外的事（存储写失败之类）：照样给一个封面主题，不让画面空着。
             console.error(error);
             if (isMissingAiApiKeyError(error)) {
                 return await applyCoverDerivedTheme(
@@ -792,7 +777,6 @@ export function useThemeController({
         applyThemeFallback,
         restoreCachedThemeForSong,
         generateAITheme,
-        applyCloudTheme,
         getThemeParkSeedTheme,
         saveCustomDualTheme,
         saveEditedAiDualTheme,

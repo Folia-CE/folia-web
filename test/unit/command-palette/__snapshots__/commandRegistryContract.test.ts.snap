@@ -262,6 +262,7 @@ exports[`command palette registry contract > keeps the registered command order 
   "smart-beat-cached",
   "smart-beat-on",
   "visualizer-sonnet",
+  "visualizer-prompt",
   "visualizer-tempera",
   "visualizer-lumiere",
   "visualizer-hanabi",

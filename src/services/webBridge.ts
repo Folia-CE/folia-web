@@ -34,6 +34,8 @@ const RELAY_RESULT_TYPE = '__folia_bridge_relay_result';
 const RELAY_READY_TYPE = '__folia_bridge_relay_ready';
 /** 页面构建时注入的桥代码目标版本（内容哈希）。握手里带给脚本，脚本据此重拉 bundle。 */
 const RELAY_TIMEOUT_MS = 5000;
+/** 脚本首次装载桥代码 bundle（约 600KB 拉取 + eval）可能要好几秒：握手等这么久。 */
+const RELAY_BOOT_TIMEOUT_MS = 15000;
 
 /**
  * 这个网页是不是被 `server/static-server.mjs` 发出来的。
@@ -175,6 +177,10 @@ export type BridgeSessionPayload = { provider?: string; cookies?: string };
 
 /** 中继握手成功与否。监听模块加载就开始，探测桥用的「第一次用才发」省不得：装没装脚本不碰网络。 */
 let relayReady = false;
+/** 中继握手**曾经**成功过：装了脚本的页面，服务器桥路径就永久关闭（见 requestWebBridge）。 */
+let relayEverReady = false;
+/** 握手时脚本报来的桥代码版本（诊断用）。 */
+let bridgeVersionSeen = '';
 let relayListenerStarted = false;
 let relayReadyWaiters: Array<() => void> = [];
 
@@ -227,6 +233,9 @@ const startRelayListener = (): void => {
         if (!data) return;
         if (data.type === RELAY_READY_TYPE || data.type === '__folia_bridge_relay_pong') {
             relayReady = true;
+            relayEverReady = true;
+            const version = (data as { version?: unknown }).version;
+            if (typeof version === 'string' && version) bridgeVersionSeen = version;
             const waiters = relayReadyWaiters;
             relayReadyWaiters = [];
             waiters.forEach((waiter) => waiter());
@@ -262,7 +271,9 @@ let relayRequestSeq = 0;
  */
 const requestViaRelay = async (payload: BridgePayload): Promise<unknown> => {
     if (!isRelayUsable()) return undefined;
-    const ready = await waitForRelayReady(RELAY_TIMEOUT_MS);
+    // 首次握手给脚本足够时间拉 bundle（600KB + eval 可能要几秒）；之后 relayReady 已是
+    // true，这里立即通过，等待的是单条请求的答复（RELAY_TIMEOUT_MS）。
+    const ready = await waitForRelayReady(RELAY_BOOT_TIMEOUT_MS);
     if (!ready) return undefined;
     const id = `relay-${Date.now()}-${relayRequestSeq += 1}`;
     return new Promise((resolve) => {
@@ -305,13 +316,20 @@ export const readBridgeSession = (answer: unknown): string => {
  */
 export const requestWebBridge = async <T = unknown>(payload: BridgePayload): Promise<T> => {
     const relayAnswer = await requestViaRelay(payload);
-    // 中继答了「协议级失败」（不认识这个 provider、网络不通、上游答非 JSON）就不把坏答案
-    // 交给上层：回落服务器桥重发一次。真正的上游业务错误（码、消息）不是协议错误，
-    // 原样上交 —— 上层 transport 只看一套分支。
+    // 中继答了「协议级失败」（不认识这个 provider、网络不通）就不把坏答案交给上层：
+    // 见下方回落分支。真正的上游业务错误（码、消息）原样上交 —— 上层 transport 只看一套分支。
     const relayProtocolError = relayAnswer !== null
         && typeof relayAnswer === 'object'
         && '__foliaBridgeError' in (relayAnswer as Record<string, unknown>);
     if (relayAnswer !== undefined && !relayProtocolError) return relayAnswer as T;
+
+    // 装了脚本（中继握手成功过）就**绝不下到服务器桥**：用户装脚本就是为了让请求全部
+    // 从自己浏览器直连上游 —— 中继失败时替他偷偷发给服务器，等于背着他把请求（带着
+    // 他的会话 Cookie）发到了部署方的机器上，而且是「明明装了脚本还有服务器请求」的
+    // 直接来源。失败就让这一次请求失败，界面上能看到，下次重试还在中继上。
+    if (relayEverReady) {
+        throw new Error(`Folia relay unavailable (bridge code ${bridgeVersionSeen || 'unknown'})`);
+    }
 
     const response = await fetch(BRIDGE_ROUTE, {
         method: 'POST',

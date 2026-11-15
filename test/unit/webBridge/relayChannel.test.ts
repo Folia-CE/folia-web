@@ -102,7 +102,7 @@ describe('页面侧的中继通道', () => {
         expect((answer as any).via).toBe('relay');
     });
 
-    it('中继 5 秒没等到结果时回落服务器桥，不抛错', async () => {
+    it('握手成功后中继挂住，就拒绝这一条请求且绝不发服务器桥（装了脚本 = 0 个服务器请求）', async () => {
         vi.useFakeTimers();
         try {
             // 脚本侧应了握手但不回结果：请求挂住。
@@ -112,11 +112,13 @@ describe('页面侧的中继通道', () => {
             const { requestWebBridge } = await import('@/services/webBridge');
 
             const promise = requestWebBridge({ provider: 'netease', operation: 'login_status', path: '/login/status' });
+            // 先挂上 rejection 处理再推进时间：reject 发生在 timer 触发的同一个 tick 里，
+            // 顺序反了就是 unhandled rejection。
+            const caught = promise.catch((error: Error) => error);
             await vi.advanceTimersByTimeAsync(5100);
-            const answer = await promise;
-
-            expect(fetchMock).toHaveBeenCalledTimes(1);
-            expect((answer as any).via).toBe('server');
+            // 装了脚本（握手成功）就绝不下到服务器桥：这条请求直接失败，界面上可见。
+            expect((await caught).message).toMatch(/relay/i);
+            expect(fetchMock).not.toHaveBeenCalled();
         } finally {
             vi.useRealTimers();
         }
@@ -132,7 +134,7 @@ describe('页面侧的中继通道', () => {
             const { requestWebBridge } = await import('@/services/webBridge');
 
             const promise = requestWebBridge({ provider: 'netease', operation: 'login_status', path: '/login/status' });
-            await vi.advanceTimersByTimeAsync(5100);
+            await vi.advanceTimersByTimeAsync(15600);
             const answer = await promise;
 
             expect(fetchMock).toHaveBeenCalledTimes(1);

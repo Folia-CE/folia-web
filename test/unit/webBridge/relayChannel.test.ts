@@ -24,12 +24,13 @@ const makeScriptSide = (answer: unknown, onPayload?: (payload: any) => void) => 
         const data = message as { type?: string; id?: string; payload?: unknown };
         expect(targetOrigin).toBe(ORIGIN);
         if (data.type === '__folia_bridge_relay_ping') {
-            queueMicrotask(() => dispatchFromScript({ type: '__folia_bridge_relay_ready' }));
+            queueMicrotask(() => dispatchFromScript({ type: '__folia_bridge_relay_ready', version: 'test', ready: true }));
             return;
         }
         if (data.type === '__folia_bridge_relay') {
             onPayload?.(data.payload);
-            queueMicrotask(() => dispatchFromScript({ type: '__folia_bridge_relay_result', id: data.id, answer }));
+            // v2 协议：脚本把答复包进 { ok, data }（对齐 sonnet 的 FOLIA_API_RESPONSE）。
+            queueMicrotask(() => dispatchFromScript({ type: '__folia_bridge_relay_result', id: data.id, ok: true, data: answer }));
         }
     },
 });

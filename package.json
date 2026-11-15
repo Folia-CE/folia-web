@@ -18,7 +18,7 @@
   "scripts": {
     "dev": "vite",
     "dev:probe": "vite --open /dev-probe.html",
-    "build": "npm run build:vercel-api && vite build",
+    "build": "npm run build:vercel-api && node scripts/build-bridge-userscript.mjs && vite build",
     "build:vercel-api": "tsc -p api-ts/tsconfig.json",
     "build:web": "vite build",
     "preview": "vite preview",

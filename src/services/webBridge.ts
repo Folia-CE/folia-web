@@ -32,6 +32,7 @@ const RELAY_PAGE_ORIGIN = 'https://folia.tangbot.xyz';
 const RELAY_MESSAGE_TYPE = '__folia_bridge_relay';
 const RELAY_RESULT_TYPE = '__folia_bridge_relay_result';
 const RELAY_READY_TYPE = '__folia_bridge_relay_ready';
+/** 页面构建时注入的桥代码目标版本（内容哈希）。握手里带给脚本，脚本据此重拉 bundle。 */
 const RELAY_TIMEOUT_MS = 5000;
 
 /**
@@ -206,8 +207,9 @@ const waitForRelayReady = (timeoutMs: number): Promise<boolean> => {
         };
         relayReadyWaiters.push(onReady);
         // 主动 ping：脚本可能晚于页面加载（@run-at document-start 一般早，但不赌这个）。
+        // ping 里带上页面的目标版本：脚本版本落后来就重拉 bundle 再应答。
         try {
-            window.postMessage({ type: '__folia_bridge_relay_ping' }, RELAY_PAGE_ORIGIN);
+            window.postMessage({ type: '__folia_bridge_relay_ping', version: (typeof __BRIDGE_VM_VERSION__ === 'string' ? __BRIDGE_VM_VERSION__ : '') }, RELAY_PAGE_ORIGIN);
         } catch (_) {
             clearTimeout(timer);
             relayReadyWaiters = relayReadyWaiters.filter((waiter) => waiter !== onReady);
@@ -221,7 +223,7 @@ const startRelayListener = (): void => {
     relayListenerStarted = true;
     window.addEventListener('message', (event: MessageEvent) => {
         if (event.origin !== RELAY_PAGE_ORIGIN) return;
-        const data = event.data as { type?: string; id?: string; answer?: unknown } | null;
+        const data = event.data as { type?: string; id?: string; answer?: unknown; ok?: boolean; data?: unknown } | null;
         if (!data) return;
         if (data.type === RELAY_READY_TYPE || data.type === '__folia_bridge_relay_pong') {
             relayReady = true;
@@ -235,7 +237,13 @@ const startRelayListener = (): void => {
         if (!pending) return;
         relayPending.delete(data.id);
         clearTimeout(pending.timer);
-        pending.resolve(data.answer);
+        // v2 协议：{ ok, data?, error? }（脚本 v2，对齐 sonnet 的 foliaExtensionBridge）。
+        // ok=false 的桥内部失败回落服务器桥重发；ok=true 的 data 才是接口答复。
+        if (data.ok === false) {
+            pending.resolve(undefined);
+            return;
+        }
+        pending.resolve(data.data);
     });
 };
 

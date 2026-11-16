@@ -41,7 +41,7 @@ export const PLATFORM_NAME_PLACES: Record<string, PlatformNamePlace> = {
     'src/webBridge/api/qq.js': { n: { qq: 481 }, kind: 'stored', why: 'QQ 桥实现：musicu 请求、vkey 换取与 cookie 名都是 QQ 协议的一部分。' },
     'src/webBridge/api/weapi.js': { n: { netease: 1 }, kind: 'doc', why: '注释提到 weapi 是网易的加密方案，代码平台无关。' },
     'src/assets/providers/appIcons.ts': { n: { netease: 2, qq: 2, kugou: 2, bodian: 2, ytm: 3, spotify: 3 }, kind: 'stored', why: '平台 App 本尊图标的文件名与导入路径：文件名就是平台 id，永不改名。' },
-    'src/components/app/notices/RelayInstallNotice.tsx': { n: { qq: 1 }, kind: 'doc', why: '安装引导的说明文字提到中继支持的平台，仅注释与文案。' },
+    'src/components/app/notices/RelayInstallNotice.tsx': { n: { netease: 1, qq: 1, kugou: 1 }, kind: 'doc', why: '安装引导的说明文字提到中继支持的平台（含 v1 旧脚本能力残缺的说明），仅注释与文案。' },
     'src/components/modal/FreeSoftwareNoticeModal.tsx': { n: { qq: 7 }, kind: 'text', why: '免费软件声明里的官方 QQ 群号与按钮文案：展示给用户的文字，不是平台调用。' },
     'src/components/shared/JoinCommunityButton.tsx': { n: { qq: 19 }, kind: 'text', why: '加入社区按钮的 QQ 群号、复制逻辑与文案：纯 UI，不碰平台接口。' },
     'src/library/core/account/loginPollBackoff.ts': { n: { qq: 1 }, kind: 'doc', why: '注释举例提到 QQ 扫码轮询，代码本身平台无关。' },

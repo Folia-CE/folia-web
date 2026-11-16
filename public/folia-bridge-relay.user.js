@@ -410,7 +410,12 @@
         const announceReady = () => {
             try { window.postMessage({ type: '__folia_bridge_relay_ready', version: bridgeVersion, ready: Boolean(bridgeVm) }, PAGE_ORIGIN); } catch (_) {}
         };
-        void loadBridge().then(announceReady).catch(() => {});
+        // 装载失败也要让页面知道：广播 ready:false，页面的握手等待会耗尽并在诊断里如实
+        // 报告「脚本在但桥代码没装上」—— 而不是看起来像脚本不在。
+        void loadBridge().then(announceReady).catch((error) => {
+            log('load failed', error);
+            announceReady();
+        });
     };
 
     boot();

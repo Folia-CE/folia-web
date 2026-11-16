@@ -260,7 +260,7 @@ async function handleBridge(req, res) {
   const bridge = await loadBridge();
 
   if (req.method === 'GET') {
-    sendJson(res, 200, { ok: true, ready: true, providers: ['netease', 'qq', 'kugou', 'bodian', 'qq_raw'] });
+    sendJson(res, 200, { ok: true, ready: true, providers: ['netease', 'qq', 'kugou', 'bodian', 'qq_raw'] }, req);
     return;
   }
 
@@ -269,7 +269,7 @@ async function handleBridge(req, res) {
   try {
     payload = JSON.parse(body.toString('utf8') || '{}');
   } catch {
-    sendJson(res, 400, { __foliaBridgeError: 'BAD_REQUEST', message: 'invalid JSON body' });
+    sendJson(res, 400, { __foliaBridgeError: 'BAD_REQUEST', message: 'invalid JSON body' }, req);
     return;
   }
 
@@ -279,12 +279,12 @@ async function handleBridge(req, res) {
   globalThis.fetch = (input, init) => nodeFetchForBridge(String(input), init || {});
   try {
     const result = await bridge.handleFoliaApiRequest(payload);
-    sendJson(res, 200, result ?? {});
+    sendJson(res, 200, result ?? {}, req);
   } catch (error) {
     sendJson(res, 200, {
       __foliaBridgeError: 'REQUEST_FAILED',
       message: error instanceof Error ? error.message : String(error),
-    });
+    }, req);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -436,21 +436,43 @@ const MIME = {
   '.webmanifest': 'application/manifest+json',
 };
 
-/** 每个响应都允许被同源的页面读到（其实同源本来就允许，写出来是为了跨端口调试也不炸）。 */
-function applyCors(res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+/**
+ * 允许跨域调桥的页面来源（静态站与桥分离部署，例如 GitHub Pages 的 folia-ce.cn）。
+ * credentials: 'include' 模式下浏览器不允许 Access-Control-Allow-Origin: *，
+ * 必须白名单 + 逐个回显；不在名单里的 origin 就不给 CORS 头（同源页面不受影响）。
+ * 环境变量 FOLIA_CORS_ORIGINS 可追加（逗号分隔）。
+ */
+const BRIDGE_CORS_ORIGINS = new Set([
+  'https://folia-ce.cn',
+  'https://www.folia-ce.cn',
+  'https://folia-ce.github.io',
+  'http://localhost:4173',
+  'http://localhost:5173',
+  ...(process.env.FOLIA_CORS_ORIGINS ? process.env.FOLIA_CORS_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean) : []),
+]);
+
+function applyCors(res, req) {
+  const origin = req && req.headers.origin;
+  if (origin && BRIDGE_CORS_ORIGINS.has(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Vary', 'Origin');
+  } else {
+    // 同源或未列名的来源：保持旧行为（宽松放行，不带 credentials）。
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  }
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', '*');
 }
 
-function sendJson(res, status, body) {
-  applyCors(res);
+function sendJson(res, status, body, req) {
+  applyCors(res, req);
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify(body));
 }
 
-function sendText(res, status, text) {
-  applyCors(res);
+function sendText(res, status, text, req) {
+  applyCors(res, req);
   res.writeHead(status, { 'Content-Type': 'text/plain; charset=utf-8' });
   res.end(text);
 }
@@ -497,7 +519,7 @@ function resolveUpstreamPath(url) {
  * 这不是一个通用代理：只放行 QQ 与酷狗那几台歌词/封面主机。放宽这条名单等于把
  * 这台服务器变成任意中转，别人就能拿它去别的地方了。
  */
-function isAllowedLyricProxyHost(hostname) {
+function isAllowedLyricProxyHost(hostname, req) {
   return hostname === 'qq.com' || hostname.endsWith('.qq.com')
     || hostname === 'y.gtimg.cn'
     || hostname === 'kugou.com' || hostname.endsWith('.kugou.com');
@@ -518,7 +540,7 @@ const LYRIC_PROXY_IGNORED_HEADERS = new Set([
  */
 async function handleLyricProxy(req, res, url) {
   if (req.method === 'OPTIONS') {
-    applyCors(res);
+    applyCors(res, req);
     res.writeHead(204);
     res.end();
     return;
@@ -594,7 +616,7 @@ async function handleLyricProxy(req, res, url) {
     return;
   }
 
-  applyCors(res);
+  applyCors(res, req);
   res.statusCode = upstream.status;
   res.setHeader('Content-Type', contentType || 'application/octet-stream');
   const buffer = Buffer.from(await upstream.arrayBuffer());
@@ -610,7 +632,7 @@ async function handleLyricProxy(req, res, url) {
  * 维持登录态。所以这里把每个 cookie 的 Domain / Secure 去掉，落到本服务自己的域上，
  * 再由页面侧的 fetch 带着 `credentials: 'include'` 自动带回。
  */
-function rewriteSetCookie(values) {
+function rewriteSetCookie(values, req) {
   const out = [];
   for (const raw of values) {
     const parts = String(raw).split(';');
@@ -675,7 +697,7 @@ async function handleProxy(req, res, url) {
   }
   clearTimeout(timer);
 
-  applyCors(res);
+  applyCors(res, req);
   // 把上游的业务响应头尽可能照搬过来（Content-Type 尤其重要：封面要靠它）。
   const contentType = upstream.headers.get('content-type');
 
@@ -754,7 +776,7 @@ function handleStatic(req, res, url) {
   });
 }
 
-function serveFile(res, filePath) {
+function serveFile(res, filePath, req) {
   const ext = path.extname(filePath).toLowerCase();
   const type = MIME[ext] || 'application/octet-stream';
   // 带内容哈希的资源可以长缓存，html 不要缓存（否则更新后拿到旧壳）。
@@ -780,7 +802,7 @@ const server = http.createServer((req, res) => {
   const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
 
   if (req.method === 'OPTIONS') {
-    applyCors(res);
+    applyCors(res, req);
     res.writeHead(204);
     res.end();
     return;

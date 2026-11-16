@@ -50,14 +50,7 @@ jobs:
         if: steps.node-modules.outputs.cache-hit != 'true'
         run: npm ci
 
-      # build 里会先跑 scripts/build-bridge-userscript.mjs：把桥接口代码打成 bundle，
-      # 以内容哈希为版本发布到 <base>/folia-bridge-vm/。中继脚本据此判断要不要重拉 ——
-      # 脚本本身永不升级，用户刷新一次页面就自动换到新桥。
-      # GitHub Pages 把站点挂在 /<repo>/ 下：资源路径要带这个前缀。
-      # 自托管（根目录部署）时把这个变量去掉或改成 /。
       - name: Build
-        env:
-          FOLIA_BASE_PATH: /${{ github.event.repository.name }}/
         run: npm run build
 
       - name: Upload Pages artifact

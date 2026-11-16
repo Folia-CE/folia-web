@@ -33,34 +33,27 @@ Lyrics Reimagined // 辞曲新境
 
 ## 项目简介
 
-**本仓库是 folia 的纯静态化版本**：整个应用就是一批静态文件（HTML / JS / CSS / SVG）—— **不需要任何服务器，不需要自建音乐后端，不需要 Node 运行时**。丢进 GitHub Pages、对象存储、任何静态托管都能跑。
-
-各家音乐平台的接口不发 CORS 头，网页版本来过不去。这一版用**浏览器中继脚本**解决：装上 [folia-bridge-relay.user.js](public/folia-bridge-relay.user.js)（Tampermonkey）之后，平台请求从**你自己的浏览器**经 `GM_xmlhttpRequest` 直连上游 —— 跨域和带 Cookie 都不受同源策略限制，服务器全程零参与、零负担。
-
-脚本本身**永不升级**：桥接口代码在构建期打成 bundle 随站点发布，脚本运行时按内容哈希自动拉取并热切换 —— 部署新版本后，你刷新一次页面就换到新桥，无感升级。
+**本仓库是 folia 的纯静态化版本**：前端就是一批静态文件（HTML / JS / CSS / SVG），部署在 GitHub Pages（[folia-ce.cn](https://folia-ce.cn)）；平台接口的跨域与登录会话由我们的同源桥服务（`server/static-server.mjs`）转发——你访问的是静态站，接口请求发到桥服务，登录与取数据都在我们的服务器上完成，不经过任何第三方中转。
 
 与桌面版（Electron）的差异：
 
 - 没有本地音乐库与模组（mods）能力；
-- 没有桌面专属平台（波点等）的登录通道；
-- 全部平台接口都从你的浏览器直连上游（这正是纯静态的意义）。
+- 没有桌面专属平台（波点等）的登录通道。
 
 Folia 是一个以全屏沉浸式歌词播放为核心的在线音乐播放器，支持网易云、酷狗、QQ 音乐等平台，通过智能歌词匹配、AI 生成配色主题，以及多种全屏歌词动画为用户提供独特的听歌体验。桌面版能力见 [folia-major 仓库](https://github.com/chthollyphile/folia-major)。
 
 ## 部署
 
-静态托管，把 `dist/` 传上去就行：
+前端纯静态（GitHub Pages 自动发布），桥服务自托管：
 
 ```bash
 npm ci
-npm run build        # 产出 dist/（含中继脚本与桥 bundle）
+npm run build        # 产出 dist/（纯静态前端）
 ```
 
-- **GitHub Pages**：仓库已配好 `.github/workflows/deploy-pages.yml`，推 main 即自动发布（站点挂在 `/<repo>/` 下，构建会自动带上这个前缀）。
-- **自托管**：`npm run serve:web` 起一个本地静态服务器看效果；或者把 `dist/` 丢给 Nginx / Caddy / 对象存储。
+- **GitHub Pages**：仓库已配好 `.github/workflows/deploy-pages.yml`，推 main 即自动发布到 [folia-ce.cn](https://folia-ce.cn)（自定义域名，`public/CNAME`）。
+- **桥服务**：`server/static-server.mjs` 托管静态文件并提供 `/api/__folia_bridge`（跨域部署时需开 CORS 允许 Pages 域名）。
 - **子路径部署**：构建时设 `FOLIA_BASE_PATH=/你的路径/`。
-
-需要中继脚本时，把 `dist/folia-bridge-relay.user.js` 打开安装（页面首次访问也会提示安装）。
 
 ## 快速下载
 

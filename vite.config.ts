@@ -333,14 +333,6 @@ export default async function viteConfig(_config: ConfigEnv): Promise<UserConfig
       '__BUILD_HOST__': JSON.stringify(buildKind.host ?? ''),
       '__APP_VERSION__': JSON.stringify(JSON.parse(fs.readFileSync(path.resolve(__dirname, 'package.json'), 'utf-8')).version),
       '__APP_VERSION_LABEL__': JSON.stringify(appVersionLabel),
-      // 篡改猴中继的桥代码版本（构建脚本 scripts/build-bridge-userscript.mjs 产出的 manifest）。
-      // 页面握手里带上它，脚本据此判断要不要重拉 bundle（见 public/folia-bridge-relay.user.js）。
-      '__BRIDGE_VM_VERSION__': JSON.stringify(((): string => {
-        try { return JSON.parse(fs.readFileSync(path.resolve(__dirname, 'public/folia-bridge-vm/manifest.json'), 'utf-8')).version || ''; }
-        catch { return ''; }
-      })()),
-      '__APP_RELEASE_CHANNEL__': JSON.stringify(appReleaseChannel),
-      '__DOCKER_STACK_VERSION__': JSON.stringify(dockerStackVersion)
     },
     resolve: {
       alias: {

@@ -31,32 +31,25 @@ Lyrics Reimagined // 辞曲新境
 
 ## About
 
-**This repository is the fully static edition of folia**: the whole app is a pile of static files (HTML / JS / CSS / SVG) — **no server, no self-hosted music backend, no Node runtime**. Drop it on GitHub Pages, an object store, any static host.
-
-Music platform APIs send no CORS headers, so a plain web page cannot reach them. This edition solves that with a **browser relay userscript**: install [folia-bridge-relay.user.js](public/folia-bridge-relay.user.js) (Tampermonkey) and platform requests go from **your own browser** straight to the upstream via `GM_xmlhttpRequest` — cross-origin and cookies included, with the server taking no part at all.
-
-The script itself **never needs upgrading**: the bridge API code is bundled and published with the site at build time; the script fetches it at runtime by content hash and hot-swaps — after a deployment you just refresh the page and you're on the new bridge.
+**This repository is the static-front-end edition of folia**: the front end is a pile of static files (HTML / JS / CSS / SVG), deployed on GitHub Pages ([folia-ce.cn](https://folia-ce.cn)); cross-origin platform requests and login sessions are forwarded by our same-origin bridge service (`server/static-server.mjs`) — you visit the static site, API requests go to the bridge, and sign-ins and data fetching happen on our server, with no third-party relay in between.
 
 Differences from the desktop edition (Electron):
 
 - No local music library or mod support;
-- No sign-in channel for desktop-only platforms (Bodian etc.);
-- Every platform request goes directly from your browser to the upstream — which is exactly what "fully static" means.
+- No sign-in channel for desktop-only platforms (Bodian etc.).
 
 ## Deploy
 
-Any static host works — upload `dist/`:
+The front end is fully static (GitHub Pages publishes automatically); the bridge service is self-hosted:
 
 ```bash
 npm ci
-npm run build        # produces dist/ (includes the userscript and the bridge bundle)
+npm run build        # produces dist/ (static front end)
 ```
 
-- **GitHub Pages**: `.github/workflows/deploy-pages.yml` is already wired up; pushing to main publishes automatically (the site lives under `/<repo>/`, and the build picks up that prefix).
-- **Self-hosting**: `npm run serve:web` starts a local static server for a quick look, or just put `dist/` behind Nginx / Caddy / an object store.
+- **GitHub Pages**: `.github/workflows/deploy-pages.yml` is already wired up; pushing to main publishes automatically to [folia-ce.cn](https://folia-ce.cn) (custom domain, `public/CNAME`).
+- **Bridge service**: `server/static-server.mjs` serves the static files and provides `/api/__folia_bridge` (when hosted cross-origin, enable CORS for the Pages domain).
 - **Sub-path hosting**: set `FOLIA_BASE_PATH=/your/path/` when building.
-
-Install the relay script by opening `dist/folia-bridge-relay.user.js` (the page also offers it on first visit).
 
 Folia is an online music player built around full-screen, immersive lyrics. It supports NetEase Cloud Music, Kugou, QQ Music, Navidrome, and more. Smart lyric matching, AI-generated color themes, and a range of full-screen lyric animations make listening feel different. For the desktop edition see the [folia-major repository](https://github.com/chthollyphile/folia-major).
 

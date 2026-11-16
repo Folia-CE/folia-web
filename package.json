@@ -2,7 +2,7 @@
   "name": "folia-major",
   "productName": "Folia",
   "desktopName": "folia-major.desktop",
-  "description": "Folia 的纯静态化版本：整个应用就是一批静态文件，不需要任何服务器、不需要自建音乐后端 —— 装上浏览器中继脚本后，各家平台的接口请求从你自己的浏览器直连上游",
+  "description": "Folia 的网页版：静态前端部署在 folia-ce.cn（GitHub Pages），各音乐平台的接口请求与登录会话由 folia 的桥服务转发，不经过任何第三方中转。",
   "author": {
     "name": "chthollyphile",
     "email": "chthollyphile@users.noreply.github.com"
@@ -18,7 +18,7 @@
   "scripts": {
     "dev": "vite",
     "dev:probe": "vite --open /dev-probe.html",
-    "build": "npm run build:vercel-api && node scripts/build-bridge-userscript.mjs && vite build",
+    "build": "npm run build:vercel-api && vite build",
     "build:vercel-api": "tsc -p api-ts/tsconfig.json",
     "build:web": "vite build",
     "preview": "vite preview",

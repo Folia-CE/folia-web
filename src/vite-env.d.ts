@@ -16,7 +16,6 @@ declare global {
   const __APP_VERSION__: string;
   const __APP_VERSION_LABEL__: string;
 /** 篡改猴中继桥代码的版本（内容哈希，构建脚本注入）。 */
-const __BRIDGE_VM_VERSION__: string;
   const __APP_RELEASE_CHANNEL__: string;
   const __DOCKER_STACK_VERSION__: string;
 

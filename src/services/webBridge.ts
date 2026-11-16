@@ -232,10 +232,13 @@ const startRelayListener = (): void => {
         const data = event.data as { type?: string; id?: string; answer?: unknown; ok?: boolean; data?: unknown } | null;
         if (!data) return;
         if (data.type === RELAY_READY_TYPE || data.type === '__folia_bridge_relay_pong') {
-            relayReady = true;
             relayEverReady = true;
             const version = (data as { version?: unknown }).version;
             if (typeof version === 'string' && version) bridgeVersionSeen = version;
+            // ready=false = 脚本还在拉桥代码 bundle（600KB + eval 要几秒）：不放行 waiter，
+            // 等它装载完广播的 ready。提前放行的话请求会在脚本里排队，5 秒超时白等。
+            if ((data as { ready?: unknown }).ready === false) return;
+            relayReady = true;
             const waiters = relayReadyWaiters;
             relayReadyWaiters = [];
             waiters.forEach((waiter) => waiter());

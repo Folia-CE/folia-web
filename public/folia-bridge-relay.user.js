@@ -341,7 +341,11 @@
         // 已装载但版本旧：重拉（bundle 文件名换了，直接清缓存重走 loadBridge）。
         bridgeVm = null;
         bridgeLoading = null;
-        try { await loadBridge(); } catch (error) { log('version sync failed', error); }
+        try {
+            await loadBridge();
+            // 重拉完广播一次 ready：页面在 ready=false 的 pong 之后一直等这条。
+            try { window.postMessage({ type: '__folia_bridge_relay_ready', version: bridgeVersion, ready: true }, PAGE_ORIGIN); } catch (_) {}
+        } catch (error) { log('version sync failed', error); }
     };
 
     /* ---------------- 请求处理 ---------------- */
@@ -401,9 +405,12 @@
         window.addEventListener('message', (event) => { void handleMessage(event); });
         log('booted (thin loader v2)');
         // 先静默装载：等第一次 ping 或请求来的时候多半已经就绪。
-        void loadBridge().then(() => {
-            try { window.postMessage({ type: '__folia_bridge_relay_ready', version: bridgeVersion, ready: true }, PAGE_ORIGIN); } catch (_) {}
-        }).catch(() => {});
+        // 装载完（或版本同步重拉完）都广播一次 ready —— 页面在 pong.ready=false 时会一直
+        // 等这条，没有它页面会把 5 秒等待全部耗在请求排队上。
+        const announceReady = () => {
+            try { window.postMessage({ type: '__folia_bridge_relay_ready', version: bridgeVersion, ready: Boolean(bridgeVm) }, PAGE_ORIGIN); } catch (_) {}
+        };
+        void loadBridge().then(announceReady).catch(() => {});
     };
 
     boot();

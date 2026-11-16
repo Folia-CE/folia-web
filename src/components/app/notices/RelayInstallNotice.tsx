@@ -37,7 +37,10 @@ export const RelayInstallNotice: React.FC = () => {
         // 主动 ping 一次再下结论：脚本应答可能晚于页面首帧，同步读标志会误判「没装」。
         // waitForRelayReady 内部先 ping 后等 pong，1.5 秒没应答就是真没装。
         void probeRelayReady(READY_GRACE_MS).then((ready) => {
-            if (!cancelled && !ready) setIsOpen(true);
+            if (cancelled) return;
+            // 装了但报不出桥代码版本 = v1 旧脚本：它的转发能力是残缺的（netease/kugou
+            // 的加密签名复刻不了），照样弹引导 —— 用户装上 v2 后弹窗自然消失。
+            if (!ready || !relayVersionSeen()) setIsOpen(true);
         });
         return () => {
             cancelled = true;

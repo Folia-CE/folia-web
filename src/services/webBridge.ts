@@ -251,6 +251,13 @@ const startRelayListener = (): void => {
         // 字段 —— 按 v1 语义取 answer。v1 报不出桥代码版本（诊断里显示 unknown），
         // 安装引导据此提示更新到 v2。
         if (typeof data.ok !== 'boolean') {
+            // v1 旧脚本：answer 就是答复本体。它带 __foliaBridgeError（协议级失败）时按
+            // 失败处理 —— 与 v2 的 ok:false 同一去向，上层 transport 只看一套分支。
+            const v1Answer = data.answer as Record<string, unknown> | null | undefined;
+            if (v1Answer && typeof v1Answer === 'object' && '__foliaBridgeError' in v1Answer) {
+                pending.resolve(undefined);
+                return;
+            }
             pending.resolve(data.answer);
             return;
         }
@@ -359,6 +366,9 @@ export const WEB_BRIDGE_LABEL = '本机（CORS 服务，无自建后端）';
 
 /** 测试与诊断用：中继握手现在成功了吗。 */
 export const isRelayReady = (): boolean => relayReady;
+
+/** 脚本握手里报来的桥代码版本；空串 = 还是 v1 旧脚本（它报不出版本），引导据此提示更新。 */
+export const relayVersionSeen = (): string => bridgeVersionSeen;
 
 /**
  * 主动问一次脚本在不：发 ping，等 pong/ready 到来（或超时）。

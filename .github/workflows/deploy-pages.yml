@@ -51,6 +51,9 @@ jobs:
         run: npm ci
 
       - name: Build
+        env:
+          # 桥服务与静态站分离部署：页面跨域请求 api.folia-ce.cn（CORS 白名单在服务器侧）。
+          VITE_BRIDGE_API_BASE: https://api.folia-ce.cn
         run: npm run build
 
       - name: Upload Pages artifact

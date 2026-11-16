@@ -103,7 +103,6 @@ export const STORAGE_KEYS = [
     'web:console_log_filters',
     'web:foliaCloudSettings.v2',
     'web:folia_free_software_notice_seen',
-    'web:folia_relay_notice_dismissed_v1',
     'web:custom_dual_theme',
     'web:custom_shortcut_command',
     'web:custom_shortcut_letter',

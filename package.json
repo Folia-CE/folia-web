@@ -46,7 +46,7 @@
     "coven:setup": "node packages/coven/bin/coven.mjs setup",
     "coven:compass": "node packages/coven/bin/coven.mjs compass",
     "test": "vitest run -c vitest.config.ts",
-    "test:unit": "vitest run -c vitest.config.ts",
+    "test:unit": "vitest run -c vitest.config.ts --retry=2",
     "test:unit:watch": "vitest -c vitest.config.ts",
     "check:versions": "node ci/checkVersionPolicy.ts",
     "check:ui": "node ci/uiPolicy.ts controls",

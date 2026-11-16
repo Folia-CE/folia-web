@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Puzzle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Sheet, SheetButton } from '../../shared/Sheet';
-import { probeRelayReady } from '../../../services/webBridge';
+import { probeRelayReady, relayVersionSeen } from '../../../services/webBridge';
 
 // src/components/app/notices/RelayInstallNotice.tsx
 // 篡改猴中继脚本的安装引导：纯网页环境里，弹窗问一次要不要装 public/folia-bridge-relay.user.js。

@@ -457,12 +457,17 @@ function applyCors(res, req) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     res.setHeader('Vary', 'Origin');
+    // credentials 模式下 Access-Control-Allow-Headers: * 不是通配符（fetch 规范明确排除），
+    // 必须逐个列出 —— content-type 不列出的话预检直接拒绝。
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept, Authorization, X-Requested-With');
   } else {
     // 同源或未列名的来源：保持旧行为（宽松放行，不带 credentials）。
     res.setHeader('Access-Control-Allow-Origin', '*');
   }
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', '*');
+  if (!(origin && BRIDGE_CORS_ORIGINS.has(origin))) {
+    res.setHeader('Access-Control-Allow-Headers', '*');
+  }
 }
 
 function sendJson(res, status, body, req) {

@@ -141,6 +141,14 @@ export default tseslint.config(
         // 这批移植代码的「best effort」 try/catch 刻意吞错（存储失败按没有处理），catch 不用绑参数。
         rules: { 'no-empty': ['error', { allowEmptyCatch: true }] },
     },
+    // 桥这批 JS 是 2 空格缩进的移植代码（几千行），与仓库 4 空格标准不同 —— 缩进与引号不强行统一。
+    {
+        files: ['src/webBridge/**/*.js'],
+        rules: {
+            '@stylistic/indent': 'off',
+            '@stylistic/quotes': 'off',
+        },
+    },
 
     // sync-server：有自己的 tsconfig 和依赖，v1 只做不需要类型信息的检查
     {

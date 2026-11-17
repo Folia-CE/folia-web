@@ -95,7 +95,7 @@ export const segmentWithVocab = (text: string): PromptSegment[] => {
         }
         if (isAscii(head)) {
             let end = index;
-            while (end < text.length && (isAscii(text[end]) || text[end] === "'" || text[end] === "-" || text[end] === "\u2019")) end += 1;
+            while (end < text.length && (isAscii(text[end]) || text[end] === '\'' || text[end] === '-' || text[end] === '\u2019')) end += 1;
             out.push({ text: text.slice(index, end), start: index, end });
             index = end;
             continue;

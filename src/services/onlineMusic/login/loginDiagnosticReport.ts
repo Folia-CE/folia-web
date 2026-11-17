@@ -161,20 +161,20 @@ export const formatLoginSelfCheck = (selfCheck: LoginReportSelfCheck | null): st
  */
 const summarizeUserAgent = (userAgent: string): string => {
     if (!userAgent) return 'unknown';
-    const browser = /Edg\/(\d+)/.exec(userAgent)?.[0]
-        ?? /OPR\/(\d+)/.exec(userAgent)?.[0]
-        ?? /Chrome\/(\d+)/.exec(userAgent)?.[0]
-        ?? /Firefox\/(\d+)/.exec(userAgent)?.[0]
-        ?? /Safari\/(\d+)/.exec(userAgent)?.[0];
+    const browserPatterns = [/Edg\/(\d+)/, /OPR\/(\d+)/, /Chrome\/(\d+)/, /Firefox\/(\d+)/, /Safari\/(\d+)/];
+    const browser = browserPatterns.map((re) => re.exec(userAgent)?.[0]).find(Boolean);
     const macVersion = /Mac OS X ([0-9_]+)/.exec(userAgent)?.[1]?.replace(/_/g, '.');
     const androidVersion = /Android ([0-9.]+)/.exec(userAgent)?.[1];
-    const os = /Windows NT 10\.0/.test(userAgent) ? 'Windows 10/11'
-        : /Windows/.test(userAgent) ? 'Windows'
-        : macVersion ? `macOS ${macVersion}`
-        : androidVersion ? `Android ${androidVersion}`
-        : /(iPhone|iPad)/.test(userAgent) ? 'iOS'
-        : /Linux/.test(userAgent) ? 'Linux'
-        : 'unknown OS';
+    const osPatterns: Array<[RegExp, string]> = [
+        [/Windows NT 10\.0/, 'Windows 10/11'],
+        [/Windows/, 'Windows'],
+        [/(iPhone|iPad)/, 'iOS'],
+        [/Linux/, 'Linux'],
+    ];
+    const os = osPatterns.find(([re]) => re.test(userAgent))?.[1]
+        ?? (macVersion ? `macOS ${macVersion}` : undefined)
+        ?? (androidVersion ? `Android ${androidVersion}` : undefined)
+        ?? 'unknown OS';
     return `${os} · ${browser ?? 'unknown browser'}`;
 };
 

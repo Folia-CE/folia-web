@@ -48,7 +48,7 @@ export const requestMachiGyroPermission = async (): Promise<boolean> => {
  */
 export const machiScreenAngle = (): number => {
     if (typeof window === 'undefined') return 0;
-    const orientation = window.screen?.orientation as (ScreenOrientation & { angle?: number }) | undefined;
+    const orientation = window.screen.orientation as (ScreenOrientation & { angle?: number }) | undefined;
     const raw = orientation?.angle ?? (window as unknown as { orientation?: number }).orientation ?? 0;
     if (typeof raw !== 'number' || !Number.isFinite(raw)) return 0;
     return ((Math.round(raw / 90) * 90) % 360 + 360) % 360;
@@ -62,14 +62,14 @@ export const machiScreenOffsets = (deltaBeta: number, deltaGamma: number, angle:
     // `|| 0` 把 -0 归一成 0：偏移量算出负零没有意义，也比较容易在断言里踩坑。
     const rad = (degrees: number) => degrees * DEGREE || 0;
     switch (angle) {
-    case 90:
-        return { azimuth: rad(-deltaBeta), elevation: rad(deltaGamma) };
-    case 180:
-        return { azimuth: rad(-deltaGamma), elevation: rad(-deltaBeta) };
-    case 270:
-        return { azimuth: rad(deltaBeta), elevation: rad(-deltaGamma) };
-    default:
-        return { azimuth: rad(deltaGamma), elevation: rad(deltaBeta) };
+        case 90:
+            return { azimuth: rad(-deltaBeta), elevation: rad(deltaGamma) };
+        case 180:
+            return { azimuth: rad(-deltaGamma), elevation: rad(-deltaBeta) };
+        case 270:
+            return { azimuth: rad(deltaBeta), elevation: rad(-deltaGamma) };
+        default:
+            return { azimuth: rad(deltaGamma), elevation: rad(deltaBeta) };
     }
 };
 
@@ -97,7 +97,7 @@ export const subscribeMachiGyro = (onOffsets: (offsets: MachiGyroOffsets) => voi
     // screen.orientation 的 change 也接上（两处都注册，重复 reset 无副作用）。
     window.addEventListener('orientationchange', reset);
     const screenOrientation = (window.screen as Screen | undefined)?.orientation;
-    screenOrientation?.addEventListener?.('change', reset);
+    screenOrientation?.addEventListener('change', reset);
     const listener = (event: DeviceOrientationEvent) => {
         // 没有陀螺仪的设备只给 null（有的连 alpha 都是 null）。
         if (event.beta === null || event.gamma === null) return;
@@ -124,7 +124,7 @@ export const subscribeMachiGyro = (onOffsets: (offsets: MachiGyroOffsets) => voi
     return () => {
         window.removeEventListener('deviceorientation', listener);
         window.removeEventListener('orientationchange', reset);
-        screenOrientation?.removeEventListener?.('change', reset);
+        screenOrientation?.removeEventListener('change', reset);
     };
 };
 

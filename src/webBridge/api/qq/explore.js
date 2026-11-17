@@ -504,7 +504,7 @@ const cloudFileNameOf = (value) => {
         const decoded = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
         // 文件名里不该有控制字符。
         return decoded && !/[\u0000-\u001f\u007f]/.test(decoded) ? decoded : value;
-    } catch (_) {
+    } catch {
         return value;
     }
 };

@@ -24,14 +24,14 @@ export function readRawSetCookies(resp) {
       const values = headers.getSetCookie();
       if (Array.isArray(values)) list.push(...values.filter(Boolean).map(String));
     }
-  } catch (_) {}
+  } catch {}
   try {
     const single = headers.get('Set-Cookie');
     if (single) list.push(String(single));
-  } catch (_) {}
+  } catch {}
   try {
     const mirrored = headers.get(SET_COOKIE_MIRROR_HEADER);
     if (mirrored) list.push(String(mirrored));
-  } catch (_) {}
+  } catch {}
   return list;
 }

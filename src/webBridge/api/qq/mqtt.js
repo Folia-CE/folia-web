@@ -191,7 +191,7 @@ export const parsePublish = (packet) => {
   if (raw.trim()) {
     try {
       payload = JSON.parse(raw);
-    } catch (_) {
+    } catch {
       payload = null;
     }
   }
@@ -261,7 +261,7 @@ const defaultOpenSocket = (url) => new Promise((resolve, reject) => {
   const timer = setTimeout(() => {
     try {
       socket.close();
-    } catch (_) {
+    } catch {
       /* 已经断了 */
     }
     reject(new Error('MQTT handshake timeout'));
@@ -304,7 +304,7 @@ const connectMqtt = async (qrcodeId, openSocket) => {
     if (reasonCode === 0) return { socket, queue };
     try {
       socket.close();
-    } catch (_) {
+    } catch {
       /* 已经断了 */
     }
     const reference = connack.serverReference || '';
@@ -331,7 +331,7 @@ export const openQrListener = async (qrcodeId, onEvent, timeoutMs, options = {})
     if (ping) clearInterval(ping);
     try {
       socket.close();
-    } catch (_) {
+    } catch {
       /* 已经断了 */
     }
   };
@@ -357,7 +357,7 @@ export const openQrListener = async (qrcodeId, onEvent, timeoutMs, options = {})
     if (closed) return;
     try {
       socket.send(PING_PACKET);
-    } catch (_) {
+    } catch {
       close();
     }
   }, PING_INTERVAL_MS);
@@ -365,10 +365,10 @@ export const openQrListener = async (qrcodeId, onEvent, timeoutMs, options = {})
   void (async () => {
     let terminal = false;
     while (!closed && Date.now() < deadline) {
-      let packet = null;
+      let packet;
       try {
         packet = await queue.next(Math.max(1, deadline - Date.now()));
-      } catch (_) {
+      } catch {
         break;
       }
       if (!packet || packet[0] >> 4 !== 3) continue;

@@ -257,7 +257,7 @@ async function readJarCookiePairs(url) {
     return (items || [])
       .filter((item) => item && item.name && item.value)
       .map((item) => `${item.name}=${item.value}`);
-  } catch (_) {
+  } catch {
     return [];
   }
 }
@@ -267,7 +267,7 @@ async function readJarCookieValue(url, name) {
   try {
     const item = await chrome.cookies.get({ url, name });
     return item && item.value ? item.value : '';
-  } catch (_) {
+  } catch {
     return '';
   }
 }
@@ -372,7 +372,7 @@ async function withInjectedCookie(cookieHeader, urlFilters, run) {
   } finally {
     try {
       await chrome.declarativeNetRequest.updateSessionRules({ removeRuleIds: ruleIds, addRules: [] });
-    } catch (_) {}
+    } catch {}
   }
 }
 
@@ -460,7 +460,7 @@ export async function qqGetLoginQr() {
     try {
       const item = await chrome.cookies.get({ url: 'https://ssl.ptlogin2.qq.com/', name: 'qrsig' });
       if (item && item.value) qrsig = item.value;
-    } catch (_) {}
+    } catch {}
   }
   if (!qrsig) throw new Error('Failed to get qrsig from response');
   noteQrLoginStep('qr:create:ok', { status: response.status, setCookieCount: pairs.length });
@@ -474,7 +474,7 @@ export async function qqGetLoginQr() {
       path: '/',
       secure: true,
     });
-  } catch (_) {}
+  } catch {}
 
   const buf = await response.arrayBuffer();
   const bytes = new Uint8Array(buf);
@@ -542,7 +542,7 @@ export async function qqCheckLoginQr(params = {}) {
   };
 
   let response;
-  let data = '';
+  let data;
   try {
     ({ res: response, body: data } = await runPoll());
     // Tencent answers an unidentified poll with an empty 403. Retrying once with
@@ -691,7 +691,7 @@ export async function qqCheckLoginQr(params = {}) {
           mergeCookiePairs(cookieMap, collectSetCookies(followed));
           checkSigRes = followed;
           checkSigFinalUrl = resolvedTarget;
-        } catch (_) {}
+        } catch {}
       }
     }
   } catch (err) {
@@ -800,7 +800,7 @@ export async function qqCheckLoginQr(params = {}) {
     let nextUrl;
     try {
       nextUrl = new URL(String(location), 'https://graph.qq.com/').toString();
-    } catch (_) {
+    } catch {
       break;
     }
     noteQrLoginStep('qr:authorize:hop', {
@@ -852,7 +852,7 @@ export async function qqCheckLoginQr(params = {}) {
             location = `x?code=${bodyCode[1]}`;
             noteQrLoginStep('qr:authorize:code-in-body', { hop: authorizeRedirectHops });
           }
-        } catch (_) {}
+        } catch {}
       }
     } catch (err) {
       noteQrLoginStep('qr:authorize:hop:exception', { hop: authorizeRedirectHops, message: err?.message || String(err) });
@@ -865,7 +865,7 @@ export async function qqCheckLoginQr(params = {}) {
   if (!authorizeOk) {
     try {
       authorizeBodyHead = String(await authorizeRes.clone().text()).replace(/\s+/g, ' ').trim().slice(0, 160);
-    } catch (_) {}
+    } catch {}
   }
   noteQrLoginStep('qr:authorize', {
     status: authorizeRes.status,
@@ -963,7 +963,7 @@ export async function qqCheckLoginQr(params = {}) {
       if (musicId && !cookieMap.has('uin') && !cookieMap.has('p_uin')) cookieMap.set('uin', `uin=o${musicId}`);
       if (musicId && !cookieMap.has('str_musicid')) cookieMap.set('str_musicid', `str_musicid=${musicId}`);
     }
-  } catch (_) {}
+  } catch {}
 
   // 明确标记这是 QQ 通道的会话：罐里万一还留着微信通道的 login_type=2 / wxuin，
   // qqCookieUin 会走微信分支读 wxuin，把别人的账号当成这次扫码的结果。

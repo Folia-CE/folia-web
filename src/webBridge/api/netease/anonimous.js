@@ -96,10 +96,10 @@ async function byWeapi(username) {
         },
         body: new URLSearchParams(encrypted).toString(),
     });
-    let body = {};
+    let body;
     try {
         body = await resp.json();
-    } catch (_) {
+    } catch {
         body = {};
     }
     return { code: body && body.code, cookie: pairsOf(readRawSetCookies(resp)).join('; ') };

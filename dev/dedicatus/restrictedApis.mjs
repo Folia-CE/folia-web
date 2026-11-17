@@ -31,6 +31,8 @@ export const RESTRICTED_APIS = [
             { path: 'src/stores/storagePrimitives.ts', why: '存储读写的原语本身' },
             { path: 'src/components/**', why: '组件里由 D411 管（含义是“组件直读存储”），不重复报' },
             { path: 'src/**/*.d.ts', why: '类型声明' },
+            { path: 'src/library/core/account/loginLeaderLease.ts', why: '跨标签的 leader 租约要枚举存储（length + key(i)）做确定性裁决，单值的 get/set 原语不够；浏览器存储对象本身在这里就是锁介质' },
+            { path: 'src/library/core/account/loginQrCache.ts', why: '二维码缓存终态清理要枚举 sessionStorage 里该平台所有登录方式的键；且缓存按设计走 sessionStorage（关标签即消失），与凭据通道隔离' },
         ],
     },
     {

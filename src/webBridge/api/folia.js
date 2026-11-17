@@ -47,6 +47,8 @@ import {
   handleQQSubscriptionStatus,
   handleQQSongLikeWrite,
   handleQQAlbumSubscribe,
+} from './qq.js';
+import {
   readNewSongs,
   readNewAlbums,
   readToplists,
@@ -61,7 +63,7 @@ import {
   readUserCloud,
   createPlaylist,
   searchCatalog,
-} from './qq.js';
+} from './qq/explore.js';
 import {
   qqWechatGetLoginQr,
   qqWechatCheckLoginQr,
@@ -96,11 +98,13 @@ import {
   downloadKGLyricByCandidate,
   kgPostAndroidSigned,
   upgradeKGYouthDayVip,
+} from './kugou.js';
+import {
   handlePlaylistAdd,
   handlePlaylistDel,
   handlePlaylistTracksAdd,
   handlePlaylistTracksDel,
-} from './kugou.js';
+} from './kugou/playlists.js';
 import { handleBodianRequest } from './bodian.js';
 
 function firstValue(...values) {

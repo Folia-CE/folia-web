@@ -2190,5 +2190,5 @@ async function qqVerifyTrackPresence(dirId, ids, cookieHeader) {
 }
 
 // 探索页那组路由（3.3.3）住在自己的目录里：那一组的代码只服务这一个平台，
-// 不该再堆进共享的桥文件。
-export * from './qq/explore.js';
+// 不该再堆进共享的桥文件。用它的地方（src/webBridge/api/folia.js）直接从那个目录导入 ——
+// 这里再转一道手会绕成环：探索页要用本文件的 musicu 与「要登录」那两个帮手。

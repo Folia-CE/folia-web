@@ -1,9 +1,9 @@
 {
-  "src/App.tsx": 3042,
+  "src/App.tsx": 3032,
   "src/components/app/scratchpad/ScratchpadCanvas.tsx": 866,
   "src/components/DevDebugOverlay.tsx": 1012,
-  "src/components/FloatingPlayerControls.tsx": 1152,
-  "src/components/modal/SettingsModal.tsx": 1458,
+  "src/components/FloatingPlayerControls.tsx": 1150,
+  "src/components/modal/SettingsModal.tsx": 1479,
   "src/components/visualizer/pendolo/VisualizerPendolo.tsx": 862,
   "src/components/visualizer/settingsPanels.tsx": 923,
   "src/library/app/GridViewOverlayHost.tsx": 846,

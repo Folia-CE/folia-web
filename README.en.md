@@ -11,11 +11,11 @@ Lyrics Reimagined // 辞曲新境
 
 [简体中文](README.md) | English
 
-[![GitHub release](https://img.shields.io/github/v/release/chthollyphile/folia-major?label=release)](https://github.com/chthollyphile/folia-major/releases)
-[![License](https://img.shields.io/github/license/chthollyphile/folia-major)](https://github.com/chthollyphile/folia-major/blob/main/LICENSE)
-[![GitHub stars](https://img.shields.io/github/stars/chthollyphile/folia-major?style=social)](https://github.com/chthollyphile/folia-major/stargazers)
+[![GitHub release](https://img.shields.io/github/v/release/folia-ce/folia-web?label=release)](https://github.com/folia-ce/folia-web/releases)
+[![License](https://img.shields.io/github/license/folia-ce/folia-web)](https://github.com/folia-ce/folia-web/blob/main/LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/folia-ce/folia-web?style=social)](https://github.com/folia-ce/folia-web/stargazers)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D24-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/chthollyphile/folia-major)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/folia-ce/folia-web)
 [![Discord](https://img.shields.io/discord/1541051241822687232?logo=discord&logoColor=white&label=Join%20our%20Discord)](https://discord.gg/dMDBTHxeKd)
 [![All Contributors](https://img.shields.io/badge/all_contributors-35-orange.svg?style=flat-square)](CONTRIBUTORS.md)
 
@@ -56,7 +56,7 @@ Folia is an online music player built around full-screen, immersive lyrics. It s
 ## Quick download
 
 > [!TIP]
-> - **GitHub**: [Latest Release](https://github.com/chthollyphile/folia-major/releases/latest) has installers for Windows, macOS, and Linux.
+> - **GitHub**: [Latest Release](https://github.com/folia-ce/folia-web/releases/latest) has installers for Windows, macOS, and Linux.
 > - **Cloud drives** (faster in mainland China): [Quark](https://pan.quark.cn/s/6e4c6fa3bc6f) · [Baidu](https://pan.baidu.com/s/1f0x3g-8PMcNCO-TJ5z1rPw?pwd=flia) (code `flia`). Stable installers for Windows and Apple silicon only.
 >
 > For other options (web deployment, Docker, AUR, Flatpak, mobile), see [Get Folia](#get-folia) below.
@@ -168,7 +168,7 @@ Self-hosters can use the [Docker Compose full-stack deployment](deploy/docker/RE
 
 ### Direct download
 
-- **Windows / macOS / Linux**: Download the latest installers from the [Releases page](https://github.com/chthollyphile/folia-major/releases/latest).
+- **Windows / macOS / Linux**: Download the latest installers from the [Releases page](https://github.com/folia-ce/folia-web/releases/latest).
 - **Arch Linux**: Install [folia-major-bin](https://aur.archlinux.org/packages/folia-major-bin) from the AUR.
 - **Flatpak**: A community-maintained third-party Flatpak is available on [Flatpark](https://flatpark.org/apps/top.izuna.foliamajor/).
 - **Android**: Third-party community ports are listed under [Mobile](#mobile) below.

@@ -21,9 +21,9 @@ import { iconLabel } from './iconLabel';
 // is not in pages/index.ts and the search does not list it; the settings window mounts it itself
 // and hands it the two dialogs it opens.
 
-// fork 的仓库，不是上游 chthollyphile/folia-major —— 同步上游时被带回原版过，别再让它落回去。
-const REPOSITORY_URL = 'https://github.com/maimai993/folia-major';
-const REPOSITORY_NAME = 'maimai993/folia-major';
+// 社区仓库（folia-ce/folia-web）：本站 folia-ce.cn 的部署来源；同步上游时别让链接被带回上游原版。
+const REPOSITORY_URL = 'https://github.com/folia-ce/folia-web';
+const REPOSITORY_NAME = 'folia-ce/folia-web';
 const BUILD_KIND = getBuildKind();
 const VERSION_INFO = (__DOCKER_STACK_VERSION__
     ? `${__APP_VERSION_LABEL__} v${__APP_VERSION__} · Stack ${__DOCKER_STACK_VERSION__} · ${__COMMIT_HASH__}`

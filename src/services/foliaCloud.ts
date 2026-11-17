@@ -3,6 +3,8 @@
 //
 // 移植自 folia-sonnet。默认指向官方那个地址，自建的把地址换成自己的即可。
 
+import { browserLocalStorage } from '@/stores/storagePrimitives';
+
 /*
  * 换过一次键名，别再换回来。
  *
@@ -43,9 +45,10 @@ const normalizeBaseUrl = (value: unknown): string => {
 export const readFoliaCloudSettings = (): FoliaCloudSettings => {
     if (cachedSettings) return { ...cachedSettings };
     let parsed: Partial<FoliaCloudSettings> | null = null;
-    if (typeof localStorage !== 'undefined') {
+    const storage = browserLocalStorage();
+    if (storage) {
         try {
-            const raw = localStorage.getItem(STORAGE_KEY);
+            const raw = storage.getItem(STORAGE_KEY);
             if (raw) parsed = JSON.parse(raw) as Partial<FoliaCloudSettings>;
         } catch {
             parsed = null;
@@ -67,9 +70,10 @@ export const updateFoliaCloudSettings = (patch: Partial<FoliaCloudSettings>): Fo
             : (normalizeBaseUrl(patch.baseUrl) || DEFAULT_CLOUD_BASE_URL),
     };
     cachedSettings = next;
-    if (typeof localStorage !== 'undefined') {
+    const storage = browserLocalStorage();
+    if (storage) {
         try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+            storage.setItem(STORAGE_KEY, JSON.stringify(next));
         } catch {
             // Quota or private mode: the session value still applies.
         }

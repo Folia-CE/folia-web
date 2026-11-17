@@ -38,3 +38,36 @@ export const removeStoredKey = (key: string) => {
         localStorage.removeItem(key);
     }
 };
+
+/**
+ * The raw localStorage object, or null when there is none (SSR, tests) or when
+ * touching it throws (private mode in some browsers).
+ *
+ * Some callers need the storage object itself rather than a single value: they
+ * enumerate keys (the cross-tab lease in src/library/core/account/loginLeaderLease.ts
+ * decides the leader by looking at every candidate key). Those callers cannot
+ * go through getStoredString/setStoredString, so the object is handed out here —
+ * this module is the one place allowed to name localStorage directly.
+ */
+export const browserLocalStorage = (): Storage | null => {
+    if (typeof window === 'undefined') {
+        return null;
+    }
+    try {
+        return window.localStorage;
+    } catch {
+        return null;
+    }
+};
+
+/** The raw sessionStorage object, or null when there is none or it throws. */
+export const browserSessionStorage = (): Storage | null => {
+    if (typeof window === 'undefined') {
+        return null;
+    }
+    try {
+        return window.sessionStorage;
+    } catch {
+        return null;
+    }
+};

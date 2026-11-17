@@ -8,6 +8,8 @@
 // 键必须区分「登录方式」：QQ 的 QQ 扫码与微信扫码是两张**内容不同**的码，只按平台做键会让
 // 用户切换方式后看到上一种方式的码——对方扫了必然失败，而且我们无从察觉。
 
+import { browserSessionStorage } from '@/stores/storagePrimitives';
+
 /**
  * 命名空间。v2 = **缓存键结构版本**（v1 只含 providerId，v2 追加 methodId）。
  * 结构再变时继续递增：旧版条目落在别的键下，自然读不到、等于丢弃，不会出现「新版读到旧结构」。
@@ -48,7 +50,7 @@ export type LoginQrCacheStorage = {
 /** 浏览器里没有 sessionStorage 时（SSR / 测试）当作没有缓存。 */
 export const browserQrCacheStorage = (): LoginQrCacheStorage | null => {
     try {
-        return typeof sessionStorage === 'undefined' ? null : sessionStorage;
+        return browserSessionStorage();
     } catch {
         // 隐私模式等场景访问即抛：当作没有缓存，不影响登录。
         return null;

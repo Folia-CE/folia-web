@@ -46,6 +46,9 @@ export const CREDENTIAL_WRITERS = {
     'src/services/onlineMusic/qq/qqTransport.ts': {
         // 只在 login_qr_check 确认（code 803）时写
         persistConfirmedSession: ['cookie'],
+        // 桥答复带回的会话（`__foliaBridgeSession`）：同一个会话的续期，桥那边的罐重启即空，
+        // 页面这份是正本，写回它只是为了不让会话退化成游客，不换账号
+        persistBridgeSession: ['cookie'],
     },
     'src/services/onlineMusic/qq/qqProvider.ts': {
         // 扫码轮询确认（803）的分支

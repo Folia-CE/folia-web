@@ -41,7 +41,7 @@ let bridgeAvailable: boolean | null = null;
  * 更合适的路顶掉 —— 那是不该发生的事。
  */
 const isDesktopShell = (): boolean => (
-    typeof window !== 'undefined' && Boolean((window as any).electron)
+    typeof window !== 'undefined' && Boolean(window.electron)
 );
 
 /**

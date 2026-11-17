@@ -4,6 +4,7 @@ import { skipsStartupExperience } from '../dev/devLaunchFlags';
 import { hasOnboardingLibrarySuiteChoice } from '../library/app/librarySuiteChoice';
 import { requestPlaybackEntryViewPrompt, usePlaybackEntryViewStore } from '../stores/usePlaybackEntryViewStore';
 import { useSettingsModalStore } from '../stores/useSettingsModalStore';
+import { getStoredString, setStoredString } from '../stores/storagePrimitives';
 
 // src/hooks/useStartupExperienceGate.ts
 
@@ -76,11 +77,11 @@ export const resolveStartupExperienceStep = ({
 const readLastSeenReleaseNotesVersion = (): string | null => (
     typeof window === 'undefined'
         ? null
-        : localStorage.getItem(LAST_SEEN_RELEASE_NOTES_VERSION_STORAGE_KEY)
+        : getStoredString(LAST_SEEN_RELEASE_NOTES_VERSION_STORAGE_KEY, '')
 );
 
 const readHasSeenFreeSoftwareNotice = (): boolean => (
-    typeof window !== 'undefined' && localStorage.getItem(FREE_SOFTWARE_NOTICE_SEEN_STORAGE_KEY) === '1'
+    typeof window !== 'undefined' && getStoredString(FREE_SOFTWARE_NOTICE_SEEN_STORAGE_KEY, '') === '1'
 );
 
 
@@ -133,7 +134,7 @@ export const useStartupExperienceGate = () => {
 
     const closeReleaseNotes = useCallback(() => {
         if (appVersion) {
-            localStorage.setItem(LAST_SEEN_RELEASE_NOTES_VERSION_STORAGE_KEY, appVersion);
+            setStoredString(LAST_SEEN_RELEASE_NOTES_VERSION_STORAGE_KEY, appVersion);
             setLastSeenReleaseNotesVersion(appVersion);
         }
         setIsReleaseNotesOpen(false);
@@ -143,7 +144,7 @@ export const useStartupExperienceGate = () => {
     // 不记的话每次冷启动都会再弹一次。
     const closeFreeSoftwareNotice = useCallback(() => {
         try {
-            localStorage.setItem(FREE_SOFTWARE_NOTICE_SEEN_STORAGE_KEY, '1');
+            setStoredString(FREE_SOFTWARE_NOTICE_SEEN_STORAGE_KEY, '1');
         } catch (error) {
             console.warn('[startup] Failed to persist the free-software notice flag:', error);
         }

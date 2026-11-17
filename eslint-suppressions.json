@@ -2549,11 +2549,8 @@
     "@typescript-eslint/no-misused-promises": {
       "count": 3
     },
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 1
-    },
     "dedicatus/error-text-in-ui": {
-      "count": 2
+      "count": 1
     }
   },
   "src/components/command-palette/surfaces/PickerSurfaceView.tsx": {
@@ -9481,11 +9478,6 @@
     },
     "@typescript-eslint/no-unsafe-return": {
       "count": 7
-    }
-  },
-  "src/services/onlineMusic/bodian/bodianTransport.ts": {
-    "@typescript-eslint/no-non-null-assertion": {
-      "count": 1
     }
   },
   "src/services/onlineMusic/catalogRefs.ts": {

@@ -20,6 +20,8 @@
 // 安全：候选键里只有 instanceId 与到期时刻，**禁止** uin / nickname / 手机号 / token。
 // 介质：localStorage（跨标签可见）；sessionStorage 是每标签独立的，用它做锁等于没锁。
 
+import { browserLocalStorage } from '@/stores/storagePrimitives';
+
 /** 候选键前缀：每个实例一条。 */
 export const LOGIN_LEADER_CANDIDATE_PREFIX = 'folia.login.cand.v1:';
 
@@ -53,7 +55,7 @@ export type LoginLeaderLockStorage = {
 /** 浏览器里没有 localStorage 时（SSR / 测试）当作「拿不到锁介质」→ 单标签直接放行。 */
 export const browserLeaderLockStorage = (): LoginLeaderLockStorage | null => {
     try {
-        return typeof localStorage === 'undefined' ? null : localStorage;
+        return browserLocalStorage();
     } catch {
         return null;
     }

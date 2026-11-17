@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronRight, CircleHelp, ExternalLink, Lightbulb, Sparkles, Users, type LucideIcon } from 'lucide-react';
+import { ChevronRight, ExternalLink, Lightbulb, Sparkles, Users, type LucideIcon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { openPonderNavigation } from '../../../../services/ponder/pagePonderTarget';
 import { BUILD_KIND_TAGS, getBuildKind } from '../../../../utils/buildProvenance';

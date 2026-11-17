@@ -1,3 +1,5 @@
+import type { Container, Graphics, Text } from 'pixi.js';
+import { promptVocabIdFor } from './promptTokenId';
 // src/components/visualizer/prompt/promptBox.ts
 // 「提示词输入框」那一套 UI —— **播放器里**用的是最早那版的全套东西：四角定位刻线、› 提示符、
 // 右上角 ⏎ 键帽、逐词方括号、每个词底下各自一串 token id、卡拉 OK 进度、字后光标。
@@ -22,7 +24,6 @@
 // 商籁不再有自己的输入框镜头（原 sonnet/sonnetPromptField.ts 已删）：提示词是独立样式，
 // 有自己的运行时，和商籁那套分镜没有关系。
 
-import { promptVocabIdFor } from './promptTokenId';
 
 type PixiModule = typeof import('pixi.js');
 
@@ -85,14 +86,14 @@ export interface PromptLaidToken {
 }
 
 export interface PromptCardView {
-    root: import('pixi.js').Container;
+    root: Container;
     /** 歌词层：运行时把逐词 Text 加进来，坐标 0 就是「第一个词的左边」。 */
-    textLayer: import('pixi.js').Container;
+    textLayer: Container;
     /**
      * 残影层：与 textLayer 同一套坐标，但**不在裁剪范围内** —— 唱完飞出去的字要能飘到框外面。
      * 正文那层是被 mask 裁在窗里的，放这里才不会被一起裁掉。
      */
-    ghostLayer: import('pixi.js').Container;
+    ghostLayer: Container;
     /** 每个词量出来的位置与宽度（与 spec.tokens 同序）。 */
     laid: readonly PromptLaidToken[];
     /** 这一套的最终字号（缩过之后的）。 */
@@ -266,10 +267,10 @@ export const buildPromptCard = (
     const idFont = Math.max(8, Math.round(fontPx * 0.2));
     const idStyle = new TextStyle({ fontFamily: PROMPT_MONO_STACK, fontSize: idFont, fill: '#ffffff' });
 
-    const trackNodes: import('pixi.js').Graphics[] = [];
-    const fillNodes: import('pixi.js').Graphics[] = [];
-    const bracketNodes: import('pixi.js').Graphics[] = [];
-    const idNodes: import('pixi.js').Text[] = [];
+    const trackNodes: Graphics[] = [];
+    const fillNodes: Graphics[] = [];
+    const bracketNodes: Graphics[] = [];
+    const idNodes: Text[] = [];
     const tickH = fontPx * 0.13;
 
     laid.forEach((token, index) => {

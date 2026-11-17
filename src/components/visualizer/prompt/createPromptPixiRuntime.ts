@@ -1,3 +1,4 @@
+import type { Application, Color, Container, Graphics, Text, TextStyle } from 'pixi.js';
 import type { MotionValue } from 'framer-motion';
 import type { Theme } from '../../../types';
 import { resolveThemeFontStack, resolveThemeFontWeight } from '../../../utils/fontStacks';
@@ -19,8 +20,6 @@ import type { PromptBoxPlan } from './promptProgram';
 // 剩下的靠镜头横移。字少的时候**绝不放大**（两个字撑满一屏就是「字少时太难看」）。
 type PixiModule = typeof import('pixi.js');
 
-/** 量宽用的参考字号：先按 100 量出逐词宽度，再按真实字号线性缩放。 */
-const FONT_BASE = 100;
 /** 一个词从「没出现」到「全亮」用多久。 */
 const WORD_REVEAL_S = 0.09;
 /**
@@ -66,7 +65,7 @@ const easeInOutCubic = (value: number) => (
  */
 const themeColor = (pixi: PixiModule, value: string | undefined, fallback: string, minLum: number): number => {
     const shared = pixi.Color.shared;
-    let color: import('pixi.js').Color;
+    let color: Color;
     try {
         color = shared.setValue(value || fallback);
     } catch {
@@ -112,13 +111,13 @@ interface WordBox {
 }
 
 interface BuiltWord {
-    node: import('pixi.js').Text;
+    node: Text;
     box: WordBox;
 }
 
 /** 唱完一个词之后飞出去的那个「残影」：位置/速度/出生时间都由这里记着。 */
 interface GhostWord {
-    node: import('pixi.js').Text;
+    node: Text;
     originX: number;
     vx: number;
     vy: number;
@@ -128,10 +127,10 @@ interface GhostWord {
 
 interface BuiltBox {
     /** 镜头：整块窗挂在它下面，推近/横移都动它。 */
-    root: import('pixi.js').Container;
+    root: Container;
     card: PromptCardView;
     words: BuiltWord[];
-    caret: import('pixi.js').Graphics;
+    caret: Graphics;
     tokens: WordBox[];
     fontPx: number;
     /** 可横移的余量（内容比窗能装的多出来的部分）。 */
@@ -144,7 +143,7 @@ interface BuiltBox {
     spawned: boolean[];
     ghosts: GhostWord[];
     /** 造残影用的字样式（和正文同一套，只是换了色/透明度）。 */
-    wordStyle: import('pixi.js').TextStyle;
+    wordStyle: TextStyle;
     wordPad: number;
     /** 这一句的种子：残影往哪边飞按它定，不同句子的轨迹不一样。 */
     seed: number;
@@ -165,12 +164,12 @@ export class PromptPixiRuntime {
     private lastWidth = 0;
     private lastHeight = 0;
 
-    private stage!: import('pixi.js').Container;
+    private stage!: Container;
 
     private constructor(
         private readonly pixi: PixiModule,
         private readonly options: PromptRuntimeOptions,
-        private readonly app: import('pixi.js').Application,
+        private readonly app: Application,
     ) { }
 
     static async create(options: PromptRuntimeOptions) {
@@ -302,7 +301,7 @@ export class PromptPixiRuntime {
         return clamp(this.lastWidth * 0.86, 200, 900);
     }
 
-    private buildBox(plan: PromptBoxPlan, index: number): BuiltBox {
+    private buildBox(plan: PromptBoxPlan): BuiltBox {
         const { Container, Graphics, Text, TextStyle } = this.pixi;
         const colors = this.palette();
         const height = Math.max(240, this.lastHeight);
@@ -483,7 +482,7 @@ export class PromptPixiRuntime {
         if (existing) return existing;
         const plan = this.options.song.boxes[index];
         if (!plan) return null;
-        const built = this.buildBox(plan, index);
+        const built = this.buildBox(plan);
         this.boxes.set(index, built);
         return built;
     }

@@ -127,7 +127,7 @@ export function useSongThemeAutoGeneration({
             try {
                 theme = await readCloudThemeFromLyrics({ lyricSource: promptText, isPureMusic, songTitle });
             } catch {
-                theme = null;
+                // 取不到云缓存不算错：直接当没有，走默认主题。
             }
             if (!theme || cancelled || latestSongKeyRef.current !== targetSongKey) {
                 return;

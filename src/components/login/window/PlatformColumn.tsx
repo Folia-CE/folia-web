@@ -50,17 +50,6 @@ const sameBox = (a: Box | null, b: Box | null): boolean => (
     && Math.abs(a.x - b.x) < 0.01 && Math.abs(a.y - b.y) < 0.01
     && Math.abs(a.w - b.w) < 0.01 && Math.abs(a.h - b.h) < 0.01
 );
-/**
- * 置灰那一行说的原因，两种各说各的：
- *
- * - 「仅桌面端」：这台机器跑不起来（`runtime-unavailable`）—— 那几家要走桌面端那座桥，
- *   在纯网页里就是这个状态。
- * - 「未配置 API」：剩下那种，真的只是没填后端地址。
- */
-const offTextKey = (row: ProviderAccountSummary): string => (
-    row.availability.reason === 'runtime-unavailable' ? 'home.providerDesktopOnly' : 'home.providerNotConfigured'
-);
-
 /** 竖着的一行名字下面那一句：登录着的是谁，或者这个平台此刻的状态。 */
 const RowNote: React.FC<{ row: ProviderAccountSummary; status: RowStatus }> = ({ row, status }) => {
     const { t } = useTranslation();

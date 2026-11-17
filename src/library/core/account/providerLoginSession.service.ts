@@ -21,7 +21,6 @@ import {
 import {
     browserLeaderLockStorage,
     canCoordinate,
-    createLoginInstanceId,
     holdsLeaderLease,
     LOGIN_LEADER_HEARTBEAT_MS,
     LOGIN_LEADER_MAX_WAIT_MS,

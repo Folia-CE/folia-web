@@ -7008,9 +7008,6 @@
     },
     "@typescript-eslint/no-unnecessary-type-conversion": {
       "count": 1
-    },
-    "@typescript-eslint/use-unknown-in-catch-callback-variable": {
-      "count": 1
     }
   },
   "src/library/core/account/useLibraryAccount.ts": {

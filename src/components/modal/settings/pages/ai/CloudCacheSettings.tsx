@@ -25,13 +25,13 @@ type ProbeState =
 
 /** 订阅云缓存的设置，改动后立刻重画（地址改完马上生效，不需要重启）。 */
 const useFoliaCloudSettings = () => {
-    const version = useSyncExternalStore(
+    // version 只用来触发重渲染：设置对象不可变，改了才换身份；重渲染时直接重读，不缓存。
+    useSyncExternalStore(
         subscribeFoliaCloudSettings,
         getFoliaCloudSettingsVersion,
         getFoliaCloudSettingsVersion,
     );
-    // version 只是用来触发重读的：设置对象本身不可变，改了才换身份。
-    return React.useMemo(() => readFoliaCloudSettings(), [version]);
+    return readFoliaCloudSettings();
 };
 
 const CloudCacheSettings: React.FC = () => {

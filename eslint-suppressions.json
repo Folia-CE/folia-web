@@ -2546,9 +2546,6 @@
     }
   },
   "src/components/command-palette/surfaces/LyricSegmentationSurfaceView.tsx": {
-    "@typescript-eslint/no-misused-promises": {
-      "count": 3
-    },
     "dedicatus/error-text-in-ui": {
       "count": 1
     }
@@ -6818,11 +6815,6 @@
       "count": 2
     },
     "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 2
-    }
-  },
-  "src/hooks/useStartupExperienceGate.ts": {
-    "dedicatus/restricted-apis": {
       "count": 2
     }
   },

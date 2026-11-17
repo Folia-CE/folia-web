@@ -120,9 +120,10 @@ const LyricSegmentationSurfaceView: React.FC<LyricSegmentationSurfaceViewProps> 
     handleRef.current = { copyPrompt, copySegmentation, importText: runImport };
 
     useEffect(() => registerLyricSegmentationHandle({
-        copyPrompt: () => handleRef.current.copyPrompt(),
-        copySegmentation: () => handleRef.current.copySegmentation(),
-        importText: text => handleRef.current.importText(text),
+        // 这三个动作内部自带 try/catch，promise 不会带着未处理的 rejection 逃出去；协议要求 void。
+        copyPrompt: () => { void handleRef.current.copyPrompt(); },
+        copySegmentation: () => { void handleRef.current.copySegmentation(); },
+        importText: text => { void handleRef.current.importText(text); },
     }), []);
 
     const handleReset = () => {
@@ -152,8 +153,8 @@ const LyricSegmentationSurfaceView: React.FC<LyricSegmentationSurfaceViewProps> 
                 isImporting={isImporting}
                 hasRecord={Boolean(record)}
                 pendingAction={pendingAction ?? null}
-                onCopyPrompt={copyPrompt}
-                onCopyCurrent={copySegmentation}
+                onCopyPrompt={() => { void copyPrompt(); }}
+                onCopyCurrent={() => { void copySegmentation(); }}
                 onReset={handleReset}
             />
         </div>

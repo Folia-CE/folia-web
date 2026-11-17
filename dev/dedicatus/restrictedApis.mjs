@@ -33,6 +33,8 @@ export const RESTRICTED_APIS = [
             { path: 'src/**/*.d.ts', why: '类型声明' },
             { path: 'src/library/core/account/loginLeaderLease.ts', why: '跨标签的 leader 租约要枚举存储（length + key(i)）做确定性裁决，单值的 get/set 原语不够；浏览器存储对象本身在这里就是锁介质' },
             { path: 'src/library/core/account/loginQrCache.ts', why: '二维码缓存终态清理要枚举 sessionStorage 里该平台所有登录方式的键；且缓存按设计走 sessionStorage（关标签即消失），与凭据通道隔离' },
+            { path: 'src/webBridge/api/bodian.js', why: '移植的 bodian-music-api 浏览器版：会话（bodianSessionV1）与设备指纹缓存是模块私有的直读直写，自带 try/catch 兜底，不适合改走全局存储原语' },
+            { path: 'src/webBridge/api/kugou.js', why: '桥里的酷狗平台迁移标记（KG_PLATFORM_MIGRATION_KEY）只在这一处读写，清会话时要逐键 removeItem；迁移完成后即不再触碰' },
         ],
     },
     {

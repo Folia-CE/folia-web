@@ -240,7 +240,7 @@ describe('QR login diagnostic report', () => {
             '```text',
             'generated: 2026-09-26T12:00:00.000Z',
             'app: 1.2.3',
-            'user agent: test-agent',
+            'user agent: unknown OS · unknown browser (test-agent)',
             'provider: netease',
             'failure: check-error',
             'QR session timeline (1, UTC):',

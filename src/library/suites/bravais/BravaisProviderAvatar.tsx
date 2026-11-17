@@ -1,7 +1,6 @@
 import React from 'react';
 import { getProviderAppIcon, PROVIDER_APP_ICONS } from '../../../assets/providers/appIcons';
 import { platformMarkOf } from '../../../components/login/PlatformMark';
-import type { OnlineProviderId } from '../../../types/onlineMusic';
 
 // src/library/suites/bravais/BravaisProviderAvatar.tsx
 // 已登录的账户显示头像，没有头像时退回平台**本尊的 App 图标**（有图的平台见 appIcons 那张表），
@@ -33,7 +32,7 @@ const BravaisProviderAvatar: React.FC<{ providerId: string; name: string; avatar
         return <img className={`bravais-account-avatar is-icon${className ? ` ${className}` : ''}`} src={getProviderAppIcon(providerId)} alt="" aria-hidden
             draggable={false} data-bravais-account-avatar="icon" />;
     }
-    const mark = platformMarkOf(providerId as OnlineProviderId, name);
+    const mark = platformMarkOf(providerId, name);
     return (
         <span className={`bravais-account-avatar is-badge${className ? ` ${className}` : ''}`} style={{ backgroundColor: mark.color, color: mark.onColor }} aria-hidden
             data-bravais-account-avatar="badge">

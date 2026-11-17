@@ -25,7 +25,8 @@ import { promptVocabIdFor } from './promptTokenId';
 // 有自己的运行时，和商籁那套分镜没有关系。
 
 
-type PixiModule = typeof import('pixi.js');
+import type * as PixiTypes from 'pixi.js';
+type PixiModule = typeof PixiTypes;
 
 /** pdoom-video 的调色板：墨底、骨白细线、信号橙。主题色由调用方覆盖。 */
 export const PROMPT_PALETTE = {

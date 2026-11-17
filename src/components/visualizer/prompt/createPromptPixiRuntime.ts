@@ -18,7 +18,8 @@ import type { PromptBoxPlan } from './promptProgram';
 //
 // 字号：基础值只跟屏宽和「歌词字号」那个全局系数走；一句太长按比例缩，**缩到底就不再缩**，
 // 剩下的靠镜头横移。字少的时候**绝不放大**（两个字撑满一屏就是「字少时太难看」）。
-type PixiModule = typeof import('pixi.js');
+import type * as PixiTypes from 'pixi.js';
+type PixiModule = typeof PixiTypes;
 
 /** 一个词从「没出现」到「全亮」用多久。 */
 const WORD_REVEAL_S = 0.09;

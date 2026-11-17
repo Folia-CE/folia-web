@@ -69,10 +69,10 @@ export const fingerprintLyricSource = (
     kind: AiCloudCacheKind,
     lyricSource: string,
     policy = '',
-): string => md5(`${CACHE_SCHEMA}\n${kind}\n${policy}\n${String(lyricSource ?? '')}`);
+): string => md5(`${CACHE_SCHEMA}\n${kind}\n${policy}\n${lyricSource}`);
 
 /** 歌词正文自己的 MD5（不含 policy）。服务端拿它跟平台上的歌词对一遍。 */
-export const fingerprintLyricText = (lyricText: string): string => md5(String(lyricText ?? ''));
+export const fingerprintLyricText = (lyricText: string): string => md5(lyricText);
 
 const missCache = new Map<string, number>();
 
@@ -147,7 +147,7 @@ export const listAiCloudCacheSongs = async (
         limit: String(limit),
         offset: String(offset),
     });
-    const trimmedQuery = String(query ?? '').trim();
+    const trimmedQuery = query.trim();
     if (trimmedQuery) search.set('q', trimmedQuery);
     try {
         const response = await fetch(`${resolveAiCloudSongsUrl()}?${search.toString()}`, {
@@ -163,15 +163,18 @@ export const listAiCloudCacheSongs = async (
         const songs: AiCloudCacheSongEntry[] = [];
         list.forEach((entry: unknown) => {
             if (!isPlainObject(entry)) return;
-            const songTitle = String(entry.songTitle ?? '').trim().slice(0, 200);
+            // 只认字符串字段：数字/对象混进来都按「没有」处理，别让 [object Object] 进缓存键。
+            const asText = (v: unknown): string => (typeof v === 'string' ? v : '');
+            const asNum = (v: unknown, fallback: number): number => (typeof v === 'number' && Number.isFinite(v) ? v : fallback);
+            const songTitle = asText(entry.songTitle).trim().slice(0, 200);
             if (!songTitle) return;
             songs.push({
                 songTitle,
-                platform: String(entry.platform ?? '').trim().slice(0, 64),
-                key: String(entry.key ?? '').trim().toLowerCase(),
-                updatedAt: String(entry.updatedAt ?? ''),
-                hits: Number(entry.hits ?? 0) || 0,
-                versions: Number(entry.versions ?? 1) || 1,
+                platform: asText(entry.platform).trim().slice(0, 64),
+                key: asText(entry.key).trim().toLowerCase(),
+                updatedAt: asText(entry.updatedAt),
+                hits: asNum(entry.hits, 0),
+                versions: asNum(entry.versions, 1),
             });
         });
         return {

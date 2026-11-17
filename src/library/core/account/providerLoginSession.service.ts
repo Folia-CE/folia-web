@@ -41,7 +41,6 @@ import {
     type LoginQrCacheStorage,
 } from './loginQrCache';
 import {
-    LOGIN_POLL_BACKOFF_MAX_MS,
     nextPollDelayMs,
     pollBudgetExhausted,
 } from './loginPollBackoff';
@@ -887,7 +886,7 @@ export const createProviderLoginSession = (deps: ProviderLoginSessionDeps): Prov
         // 只在新取的码上写缓存；复用命中时不覆盖 createdAt（否则永远不过期）。
         if (!reusable) {
             let declaredTtl: number | null = null;
-            try { declaredTtl = auth.getLoginTtlMs(round.providerId); } catch { declaredTtl = null; }
+            try { declaredTtl = auth.getLoginTtlMs(round.providerId); } catch { /* 平台没声明就按保守默认 */ }
             writeCachedLoginQr(qrCache, round.providerId, round.methodId, {
                 key: started.key,
                 qrImage: started.imageUrl,

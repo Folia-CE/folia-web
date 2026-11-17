@@ -20,7 +20,7 @@ const validateCachedDualTheme = (value: unknown): DualTheme | null => {
   if (!value || typeof value !== 'object') return null;
   let sanitized: DualTheme;
   try {
-    sanitized = sanitizeDualTheme(value as DualTheme);
+    sanitized = sanitizeDualTheme(value);
   } catch {
     return null;
   }

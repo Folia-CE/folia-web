@@ -104,6 +104,15 @@ export default tseslint.config(
         languageOptions: { sourceType: 'commonjs' },
     },
 
+    // 桥的接口代码（src/webBridge/api/*.js）跑在服务端与浏览器两个环境里，
+    // cookies.js / eapi.js 还会落到 Chrome 扩展与 WebView 上下文：chrome 是那里的宿主全局。
+    {
+        files: ['src/webBridge/**/*.js'],
+        languageOptions: { globals: { chrome: 'readonly' } },
+        // 这批移植代码的「best effort」 try/catch 刻意吞错（存储失败按没有处理），catch 不用绑参数。
+        rules: { 'no-empty': ['error', { allowEmptyCatch: true }] },
+    },
+
     // sync-server：有自己的 tsconfig 和依赖，v1 只做不需要类型信息的检查
     {
         files: ['sync-server/**/*.ts'],

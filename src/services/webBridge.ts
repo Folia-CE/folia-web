@@ -66,8 +66,8 @@ const probeBridge = async (): Promise<boolean> => {
             headers: { Accept: 'application/json' },
             cache: 'no-store',
         });
-        // 一个答复都没有（或者不是 Response）：没有桥。
-        return response?.ok === true;
+        // fetch 正常返回就是 Response：非 2xx 会在 ok 上体现；网络异常走下面的 catch。
+        return response.ok;
     } catch {
         return false;
     }

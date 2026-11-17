@@ -40,7 +40,7 @@ function safeDecodeCookieValue(value) {
   const raw = String(value || '');
   try {
     return decodeURIComponent(raw);
-  } catch (_) {
+  } catch {
     return raw;
   }
 }
@@ -76,8 +76,8 @@ async function readEapiState() {
   let stored = {};
   try {
     stored = (await chrome.storage.local.get(keys)) || {};
-  } catch (_) {
-    stored = {};
+  } catch {
+    // 读不到垫片就按空状态走，下面的字段各自回落。
   }
   const next = {};
   const deviceId = String(stored[EAPI_STATE_KEYS.deviceId] || '').trim();
@@ -92,7 +92,7 @@ async function readEapiState() {
   if (!nuid) patch[EAPI_STATE_KEYS.nuid] = next.nuid;
   if (!wnmcid) patch[EAPI_STATE_KEYS.wnmcid] = next.wnmcid;
   if (Object.keys(patch).length > 0) {
-    try { await chrome.storage.local.set(patch); } catch (_) {}
+    try { await chrome.storage.local.set(patch); } catch {}
   }
   return next;
 }
@@ -105,7 +105,7 @@ async function rememberEapiNmtid(setCookies) {
     if (!match) continue;
     const value = String(match[1] || '').trim();
     if (!value) continue;
-    try { await chrome.storage.local.set({ [EAPI_STATE_KEYS.nmtid]: value }); } catch (_) {}
+    try { await chrome.storage.local.set({ [EAPI_STATE_KEYS.nmtid]: value }); } catch {}
     return;
   }
 }
@@ -189,8 +189,8 @@ export async function eapiRequest(path, data, cookieHeader) {
   let body = {};
   try {
     body = await resp.json();
-  } catch (_) {
-    body = {};
+  } catch {
+    // 答复读不出 JSON 就按空对象走。
   }
   // 安卓桥把 Set-Cookie 镜像到 x-folia-set-cookie，只看 getSetCookie() 的话这里永远是空的。
   const setCookies = readRawSetCookies(resp);

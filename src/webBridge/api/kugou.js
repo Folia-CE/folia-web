@@ -70,18 +70,18 @@ async function saveKGLoginPersist(patch) {
   if (patch.KUGOU_API_MAC) payload.KUGOU_API_MAC = String(patch.KUGOU_API_MAC);
   if (patch.KUGOU_API_WEBGL) payload.KUGOU_API_WEBGL = String(patch.KUGOU_API_WEBGL);
   if (kuGoo) payload.KuGoo = kuGoo;
-  try { await chrome.storage.local.set({ [KG_LOGIN_STORAGE_KEY]: payload }); } catch (_) {}
+  try { await chrome.storage.local.set({ [KG_LOGIN_STORAGE_KEY]: payload }); } catch {}
 }
 
 async function restoreKGLoginPersistIfNeeded() {
   let header = '';
-  try { header = await getKGCookie(); } catch (_) {}
+  try { header = await getKGCookie(); } catch {}
   if (kgCookieUserId(header) && kgCookieToken(header)) return false;
   let stored = null;
   try {
     const hit = await chrome.storage.local.get([KG_LOGIN_STORAGE_KEY]);
     stored = hit && hit[KG_LOGIN_STORAGE_KEY];
-  } catch (_) {}
+  } catch {}
   const userId = String(stored && (stored.userid || stored.KugooID) || '').trim();
   const token = String(stored && (stored.token || stored.t) || '').trim();
   if (!userId || !token) return false;
@@ -108,7 +108,7 @@ async function restoreKGLoginPersistIfNeeded() {
   try {
     await setBrowserCookies('https://www.kugou.com/', cookiePatch);
     await setBrowserCookies('https://m.kugou.com/', cookiePatch);
-  } catch (_) {
+  } catch {
     return false;
   }
   clearCookieCache();
@@ -136,7 +136,7 @@ async function persistKGLoginCookies(patch) {
   try {
     await setBrowserCookies('https://www.kugou.com/', cookiePatch);
     await setBrowserCookies('https://m.kugou.com/', cookiePatch);
-  } catch (_) {}
+  } catch {}
   await saveProviderCookie('kg', cookiePatch);
   await saveKGLoginPersist(cookiePatch);
 }
@@ -213,7 +213,7 @@ function buildKGLiteDeviceIdentity() {
   const guid = (() => {
     try {
       if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID().replace(/-/g, '').toUpperCase();
-    } catch (_) {}
+    } catch {}
     return `${kgRandomHex(8)}-${kgRandomHex(4)}-4${kgRandomHex(3)}-${kgRandomHex(4)}-${kgRandomHex(12)}`.replace(/-/g, '');
   })();
   const mid = BigInt(`0x${md5(guid)}`).toString(10);
@@ -237,9 +237,9 @@ async function loadKGDeviceIdentity() {
       kgDeviceCache = { ...candidate, platform: KG_PLATFORM };
       return kgDeviceCache;
     }
-  } catch (_) {}
+  } catch {}
   kgDeviceCache = buildKGLiteDeviceIdentity();
-  try { await chrome.storage.local.set({ [KG_DEVICE_STORAGE_KEY]: kgDeviceCache }); } catch (_) {}
+  try { await chrome.storage.local.set({ [KG_DEVICE_STORAGE_KEY]: kgDeviceCache }); } catch {}
   return kgDeviceCache;
 }
 
@@ -281,7 +281,7 @@ async function clearLegacyKugouPlatformSession() {
     await Promise.all(KG_COOKIE_URLS.flatMap(url => KG_LEGACY_COOKIE_KEYS.map(name => (
       chrome.cookies.remove({ url, name }).catch(() => null)
     ))));
-  } catch (_) {}
+  } catch {}
   try {
     await chrome.storage.local.remove([
       KG_LOGIN_STORAGE_KEY,
@@ -290,7 +290,7 @@ async function clearLegacyKugouPlatformSession() {
       'kgVipSession',
       'foliaBridgeKgCookie',
     ]);
-  } catch (_) {}
+  } catch {}
   try {
     [
       'online_provider:kugou:cookie',
@@ -300,7 +300,7 @@ async function clearLegacyKugouPlatformSession() {
       'online_provider:kugou:vip_token',
       'online_provider:kugou:vip_type',
     ].forEach(key => localStorage.removeItem(key));
-  } catch (_) {}
+  } catch {}
   clearCookieCache();
   kgMidCache = '';
   kgDeviceCache = null;
@@ -320,17 +320,17 @@ async function ensureKGLitePlatformMigration() {
     try {
       const stored = await chrome.storage.local.get([KG_PLATFORM_MIGRATION_KEY]);
       if (stored && stored[KG_PLATFORM_MIGRATION_KEY] === KG_PLATFORM_MIGRATION_VERSION) return;
-    } catch (_) {
+    } catch {
       try {
         if (localStorage.getItem(KG_PLATFORM_MIGRATION_KEY) === KG_PLATFORM_MIGRATION_VERSION) return;
-      } catch (_) {}
+      } catch {}
     }
     noteLibraryStep('kugou', 'platform:migration:start', { from: 'legacy', to: KG_PLATFORM });
     await clearLegacyKugouPlatformSession();
     try {
       await chrome.storage.local.set({ [KG_PLATFORM_MIGRATION_KEY]: KG_PLATFORM_MIGRATION_VERSION });
-    } catch (_) {
-      try { localStorage.setItem(KG_PLATFORM_MIGRATION_KEY, KG_PLATFORM_MIGRATION_VERSION); } catch (_) {}
+    } catch {
+      try { localStorage.setItem(KG_PLATFORM_MIGRATION_KEY, KG_PLATFORM_MIGRATION_VERSION); } catch {}
     }
     noteLibraryStep('kugou', 'platform:migration:done', { platform: KG_PLATFORM });
   })().finally(() => {
@@ -383,7 +383,7 @@ function kgAesDecryptParams(hex, tempKey) {
     padding: CryptoJS.pad.Pkcs7,
   });
   const text = decrypted.toString(CryptoJS.enc.Utf8);
-  try { return JSON.parse(text); } catch (_) { return text; }
+  try { return JSON.parse(text); } catch { return text; }
 }
 
 function kgRsaEncryptRaw(data) {
@@ -428,7 +428,7 @@ async function loadKGVipSessionCache(userId) {
       };
       return kgVipSessionCache;
     }
-  } catch (_) {}
+  } catch {}
   return null;
 }
 
@@ -439,7 +439,7 @@ async function clearKGVipAppToken(userId) {
   if (!prev || !prev.appToken) return;
   const next = Object.assign({}, prev, { appToken: '', sourceToken: '', authAt: 0, at: Date.now() });
   kgVipSessionCache = next;
-  try { await chrome.storage.local.set({ kgVipSession: next }); } catch (_) {}
+  try { await chrome.storage.local.set({ kgVipSession: next }); } catch {}
 }
 
 async function saveKGVipSessionCache(userId, patch) {
@@ -464,7 +464,7 @@ async function saveKGVipSessionCache(userId, patch) {
   if (next.isVip && !next.vipType) next.vipType = 6;
   if (next.isVip && !next.vipLabel) next.vipLabel = 'VIP';
   kgVipSessionCache = next;
-  try { await chrome.storage.local.set({ kgVipSession: next }); } catch (_) {}
+  try { await chrome.storage.local.set({ kgVipSession: next }); } catch {}
   return next;
 }
 
@@ -575,7 +575,7 @@ async function refreshKGLoginByToken(cookieHeader) {
       clienttime_ms: dateNow,
       dev: device.dev,
     };
-  } catch (_) {
+  } catch {
     return null;
   }
   // 走 gateway 而不是明文 http://login.user.kugou.com：后者在部分移动网络上会一直不响应
@@ -589,7 +589,7 @@ async function refreshKGLoginByToken(cookieHeader) {
   for (const entry of bases) {
     const base = entry.base;
     const refreshStartedAt = Date.now();
-    const refreshHost = (() => { try { return new URL(base).host; } catch (_) { return base; } })();
+    const refreshHost = (() => { try { return new URL(base).host; } catch { return base; } })();
     noteLibraryStep('kugou', 'auth:refresh:request', { host: refreshHost });
     try {
       // Prefer web cookie — do not inject stale appToken into login_by_token.
@@ -640,7 +640,7 @@ async function refreshKGLoginByToken(cookieHeader) {
         if (vipToken) cookiePatch.vip_token = vipToken;
         if (vipType) cookiePatch.vip_type = String(vipType);
         if (Object.keys(cookiePatch).length) await setBrowserCookies('https://www.kugou.com/', cookiePatch);
-      } catch (_) {}
+      } catch {}
       await saveKGVipSessionCache(userId, {
         appToken: nextToken || '',
         sourceToken: token,
@@ -1177,7 +1177,7 @@ async function resolveKGSongMetaForFavorite(hash, albumId, albumAudioId, name, c
       if (!albumId) albumId = String(info.albumid || info.album_id || info.albumId || '').trim();
       if (!albumAudioId) albumAudioId = String(info.mixsongid || info.album_audio_id || info.audio_id || info.albumAudioId || '').trim();
     }
-  } catch (_) {}
+  } catch {}
   if (!name) name = hash;
   return { hash, albumId, albumAudioId, name };
 }
@@ -1195,7 +1195,7 @@ async function fetchKGFavoriteListId(cookieHeader, forceRefresh) {
     const fetched = await fetchKGUserPlaylistOfficial(cookieHeader, 1, 100);
     const fav = pickKGFavoriteList(fetched.lists || []);
     listId = String(kgPlaylistListId(fav) || '').trim();
-  } catch (_) {}
+  } catch {}
   if (!listId) {
     for (const listType of [2, 0]) {
       try {
@@ -1210,7 +1210,7 @@ async function fetchKGFavoriteListId(cookieHeader, forceRefresh) {
         const fav = pickKGFavoriteList(extractKGCloudLists(body));
         listId = String(kgPlaylistListId(fav) || '').trim();
         if (listId) break;
-      } catch (_) {}
+      } catch {}
     }
   }
   if (!listId) return '';
@@ -1351,14 +1351,6 @@ export async function handleKGSongLike(hash, albumId, albumAudioId, name, like, 
   }
   if (!kgCloudlistOk(body)) return { provider: 'kg', error: 'KG_LIKE_FAILED', loggedIn: true, hash, liked: false, body };
   return { provider: 'kg', loggedIn: true, hash, liked: true };
-}
-
-function decodeCookieValue(value) {
-  try {
-    return decodeURIComponent(String(value || '').replace(/\+/g, '%20')).trim();
-  } catch (_) {
-    return String(value || '').trim();
-  }
 }
 
 function normalizeKGCover(url, size) {
@@ -1676,14 +1668,9 @@ async function kgFetchJSON(url, opts) {
   const cleaned = String(text || '').replace(/<!--[\s\S]*?-->/g, '').trim();
   try {
     return JSON.parse(cleaned || text);
-  } catch (_) {
+  } catch {
     return null;
   }
-}
-
-function buildKGMid() {
-  // Official clients commonly use 32-char md5 hex mid.
-  return md5(`mineradio_${Date.now()}_${Math.random()}`);
 }
 
 async function getKGMid(cookieHeader) {
@@ -1698,12 +1685,6 @@ function buildKGTrackerKey(hash, mid, userId, appid) {
   appid = String(appid || KG_ANDROID_APPID);
   // Compatible with both historical concat and official signKey(hash+salt+appid+mid+userid).
   return md5(`${hash}${KG_TRACKER_SECRET}${appid}${mid}${userId}`);
-}
-
-function buildKGLiteTrackerKey(hash, mid, userId) {
-  hash = String(hash || '').trim().toLowerCase();
-  userId = String(userId || '0').replace(/\D/g, '') || '0';
-  return md5(`${hash}${KG_TRACKER_SECRET}${KG_LITE_APPID}${mid}${userId}`);
 }
 
 /**
@@ -2100,7 +2081,7 @@ async function fetchKGUserVipDetailOnce(cookieHeader, busiType) {
         busiType: busiType || '',
         empty: false,
       };
-    } catch (_) {}
+    } catch {}
   }
   return null;
 }
@@ -2440,7 +2421,7 @@ async function fetchKGUserCenterVip(cookieHeader) {
       });
       const parsed = parseKGUserCenterBody(body);
       if (parsed) return parsed;
-    } catch (_) {}
+    } catch {}
   }
   try {
     const body = await kgFetchAndroidSigned(
@@ -2452,7 +2433,7 @@ async function fetchKGUserCenterVip(cookieHeader) {
     );
     const parsed = parseKGUserCenterBody(body);
     if (parsed) return parsed;
-  } catch (_) {}
+  } catch {}
   return null;
 }
 
@@ -2554,7 +2535,7 @@ async function fetchKGUserProfile(cookieHeader) {
         vipType: vip.vipType,
         isVip: vip.isVip,
       };
-    } catch (_) {}
+    } catch {}
   }
   return null;
 }
@@ -2593,7 +2574,7 @@ async function fetchKGUnionVip(cookieHeader) {
       if (!body) continue;
       const vip = extractKGVipFromPayload(body.data || body.info || body);
       if (vip.isVip) best = mergeKGVipState(best, vip);
-    } catch (_) {}
+    } catch {}
   }
   return best.isVip ? best : null;
 }
@@ -2621,7 +2602,7 @@ async function fetchKGMobileVipInfo(cookieHeader) {
       if (!body) continue;
       const vip = extractKGVipFromPayload(body.data || body.info || body);
       if (vip.isVip) best = mergeKGVipState(best, vip);
-    } catch (_) {}
+    } catch {}
   }
   return best.isVip ? best : null;
 }
@@ -2636,7 +2617,7 @@ export async function getKGLoginStatus(cookieHeader) {
       // Soft refresh: try app token for VIP fields, but never poison web cookie token.
       const auth = await ensureKGAndroidAuth(cookieHeader, { requireAppToken: true });
       cookieHeader = await enrichKGCookieHeader(auth.cookieHeader || cookieHeader, { preferAppToken: false });
-    } catch (_) {
+    } catch {
       cookieHeader = await enrichKGCookieHeader(cookieHeader, { preferAppToken: false });
     }
   } else {
@@ -2714,7 +2695,7 @@ export async function handleKGSearch(keywords, limit, cookieHeader, page) {
       });
       list = (body && body.data && body.data.lists) || (body && body.lists) || [];
       if (Array.isArray(list) && list.length) break;
-    } catch (_) {}
+    } catch {}
   }
   return list.map((item) => mapKGSong(item, true)).filter((s) => s.hash && s.name);
 }
@@ -3000,7 +2981,7 @@ async function fetchKGPlayGetData(hash, albumId, albumAudioId, cookieHeader, log
       return url;
     }
     if (Array.isArray(url) && url[0]) return url[0];
-  } catch (_) {}
+  } catch {}
   return '';
 }
 
@@ -3009,7 +2990,7 @@ function describeKGSchemeAndHost(url) {
   try {
     const parsed = new URL(String(url || ''), 'https://www.kugou.com/');
     return `${parsed.protocol}//${parsed.host}`;
-  } catch (_) {
+  } catch {
     return 'unparseable';
   }
 }
@@ -3067,7 +3048,7 @@ export async function handleKGSongUrl(hash, albumId, albumAudioId, quality, cook
       if (!albumId && playInfo) {
         albumId = String(playInfo.albumid || playInfo.album_id || '').trim();
       }
-    } catch (_) {}
+    } catch {}
   }
   const picked = pickKGHashForQuality(extra, hash, requestedQuality);
   const playHash = picked.hash;
@@ -3165,7 +3146,7 @@ export async function handleKGSongUrl(hash, albumId, albumAudioId, quality, cook
         vipType: Number(login.vipType) || 0,
       });
     }
-  } catch (_) {}
+  } catch {}
   const blocked = trackerResult.blocked || trackerResult.status === 2;
   const likelyVipSong = blocked || trackerResult.status === 2;
   const vipCacheNow = await loadKGVipSessionCache(login.userId);
@@ -3212,12 +3193,12 @@ function decodeKGLyricContent(content) {
       let decoded = '';
       try {
         decoded = decodeURIComponent(escape(bin));
-      } catch (_) {
+      } catch {
         decoded = bin;
       }
       if (decoded && (decoded.includes('[') || /[\u4e00-\u9fa5]/.test(decoded))) return decoded;
     }
-  } catch (_) {}
+  } catch {}
   return content;
 }
 
@@ -3250,7 +3231,7 @@ async function fetchKGBasicLrc(hash) {
         referer: 'https://m.kugou.com/',
       });
       if (isValidKGLyricText(text)) return String(text).trim();
-    } catch (_) {}
+    } catch {}
   }
   return '';
 }
@@ -3313,7 +3294,7 @@ async function searchKGLyricCandidates(hash, albumAudioId, durationMs, keyword) 
       });
       const list = (search && (search.candidates || (search.data && search.data.candidates))) || [];
       if (Array.isArray(list) && list.length) return list;
-    } catch (_) {}
+    } catch {}
   }
   return [];
 }
@@ -3339,7 +3320,7 @@ async function downloadKGLyricByCandidate(candidate) {
       });
       const lyric = decodeKGLyricContent(body && (body.content || (body.data && body.data.content)));
       if (isValidKGLyricText(lyric)) return lyric;
-    } catch (_) {}
+    } catch {}
   }
   return '';
 }
@@ -3362,7 +3343,7 @@ export async function handleKGLyric(hash, albumAudioId, duration, keyword) {
         return { provider: 'kg', lyric, source: 'krc' };
       }
     }
-  } catch (_) {}
+  } catch {}
   return { provider: 'kg', lyric: '' };
 }
 
@@ -3588,7 +3569,7 @@ async function fetchKGPlaylistCoverFromTracks(listId, globalCollectionId, cookie
       );
       const cover = pickCover(extractKGCloudLists(body));
       if (cover) return cover;
-    } catch (_) {}
+    } catch {}
   }
   if (globalCollectionId) {
     try {
@@ -3610,7 +3591,7 @@ async function fetchKGPlaylistCoverFromTracks(listId, globalCollectionId, cookie
       );
       const cover = pickCover(extractKGCloudLists(body));
       if (cover) return cover;
-    } catch (_) {}
+    } catch {}
   }
   return '';
 }
@@ -3637,7 +3618,7 @@ async function enrichKGFavoritePlaylist(playlists, cookieHeader, userId) {
   if (!realFavId) {
     try {
       realFavId = String(await fetchKGFavoriteListId(cookieHeader, true) || '').trim();
-    } catch (_) {}
+    } catch {}
   }
   if (!realFavId && favCandidates.length) {
     // Fall back to candidate with highest trackCount
@@ -3663,7 +3644,7 @@ async function enrichKGFavoritePlaylist(playlists, cookieHeader, userId) {
     if (!cover && maxCount > 0) {
       try {
         cover = await fetchKGPlaylistCoverFromTracks(realFavId, realFavGlobal, cookieHeader);
-      } catch (_) {}
+      } catch {}
     }
     list = list.filter((pl) => !(
       pl && (pl.isFavorite || isKGFavoriteName(pl.name) || String(pl.listId) === '2' || String(pl.id) === '2')
@@ -3744,7 +3725,7 @@ export async function handleKGUserPlaylists(cookieHeader) {
         .map((item) => mapKGPlaylist(item, userId))
         .filter((pl) => keepKGUserPlaylist(pl, userId));
       if (playlists.length) source = 'user/playlist';
-    } catch (_) {}
+    } catch {}
   }
 
   // Web-signed (appid 1014) works with PC cookie when android convert fails.
@@ -3761,7 +3742,7 @@ export async function handleKGUserPlaylists(cookieHeader) {
         playlists = webLists;
         source = 'web-signed';
       }
-    } catch (_) {}
+    } catch {}
   }
 
   playlists = await enrichKGFavoritePlaylist(playlists, cookieHeader, userId);
@@ -3873,7 +3854,7 @@ export async function handleKGPlaylistTracks(id, cookieHeader, globalCollectionI
     try {
       const favId = String(await fetchKGFavoriteListId(cookieHeader, true) || '').trim();
       if (favId) resolvedId = favId;
-    } catch (_) {}
+    } catch {}
   }
 
   const tryLoad = async (listOrGlobal) => {
@@ -3915,7 +3896,7 @@ export async function handleKGPlaylistTracks(id, cookieHeader, globalCollectionI
       if (got.id) resolvedId = got.id;
       if (got.source) source = got.source;
     }
-  } catch (_) {}
+  } catch {}
 
   if (!tracks.length) {
     try {
@@ -3928,7 +3909,7 @@ export async function handleKGPlaylistTracks(id, cookieHeader, globalCollectionI
           source = got.source || 'cloudlist-fav';
         }
       }
-    } catch (_) {}
+    } catch {}
   }
 
   const cover = (() => {
@@ -3949,35 +3930,6 @@ export async function handleKGPlaylistTracks(id, cookieHeader, globalCollectionI
       : ''),
   };
   return { provider: 'kg', loggedIn, playlist, tracks };
-}
-
-async function fetchKGSpecialTracks(specialId, cookieHeader) {
-  const pageSize = 200;
-  let page = 1;
-  let total = Infinity;
-  const tracks = [];
-  while (tracks.length < total && page <= 20) {
-    const u = new URL('http://mobilecdn.kugou.com/api/v3/special/song');
-    u.searchParams.set('specialid', specialId);
-    u.searchParams.set('page', String(page));
-    u.searchParams.set('pagesize', String(pageSize));
-    u.searchParams.set('version', '9108');
-    u.searchParams.set('area_code', '1');
-    const body = await kgFetchJSON(u.toString(), {
-      mobile: true,
-      referer: 'https://www.kugou.com/',
-      headers: buildKGRequestHeaders(cookieHeader),
-    });
-    const info = (body && body.data && body.data.info) || (body && body.info) || [];
-    total = Number((body && body.data && body.data.total) || body.total || info.length) || info.length;
-    info.forEach((item) => {
-      const song = mapKGSong(item, false);
-      if (song.hash) tracks.push(song);
-    });
-    if (!info.length) break;
-    page += 1;
-  }
-  return tracks;
 }
 
 async function fetchKGGlobalCollectionTracks(globalId, cookieHeader) {
@@ -4151,7 +4103,7 @@ async function kgFetchMobileJSON(pathWithQuery) {
         headers: { 'User-Agent': KG_UA_MOBILE },
       });
       if (body) return body;
-    } catch (_) {}
+    } catch {}
   }
   return null;
 }
@@ -4188,7 +4140,7 @@ async function searchKGSingerId(name) {
         singerName: matched.singername || matched.author_name || matched.name || name,
       };
     }
-  } catch (_) {}
+  } catch {}
 
   // 2) complexsearch singer
   try {
@@ -4214,7 +4166,7 @@ async function searchKGSingerId(name) {
         singerName: matched.singername || matched.author_name || matched.AuthorName || matched.name || name,
       };
     }
-  } catch (_) {}
+  } catch {}
 
   // 3) Fall back: take SingerId from a song search hit
   try {
@@ -4224,7 +4176,7 @@ async function searchKGSingerId(name) {
     if (hit && hit.singerId) {
       return { singerId: String(hit.singerId), singerName: hit.artist || name };
     }
-  } catch (_) {}
+  } catch {}
 
   return { singerId: '', singerName: name };
 }
@@ -4250,7 +4202,7 @@ export async function handleKGArtistDetail(id, name, limit) {
         `/api/v3/singer/info?singerid=${encodeURIComponent(singerId)}&with_res_tag=1`,
       );
       info = (infoBody && infoBody.data) || infoBody || {};
-    } catch (_) {}
+    } catch {}
     try {
       const qs = new URLSearchParams({
         singerid: singerId,
@@ -4266,7 +4218,7 @@ export async function handleKGArtistDetail(id, name, limit) {
       rawSongs = (songsBody && songsBody.data && songsBody.data.info)
         || (songsBody && songsBody.info)
         || [];
-    } catch (_) {}
+    } catch {}
   }
 
   // Last resort: keyword songs when singer endpoints fail
@@ -4289,7 +4241,7 @@ export async function handleKGArtistDetail(id, name, limit) {
         const first = (searched || []).find((s) => s.singerId);
         if (first) singerId = String(first.singerId);
       }
-    } catch (_) {}
+    } catch {}
   }
 
   if (!singerId && !rawSongs.length) {
@@ -4567,7 +4519,7 @@ async function kgBuildQrDataUrl(text) {
     if (!resp.ok) return '';
     const buf = new Uint8Array(await resp.arrayBuffer());
     return buf.length ? `data:image/png;base64,${kgBytesToBase64(buf)}` : '';
-  } catch (_) {
+  } catch {
     return '';
   }
 }
@@ -4671,7 +4623,7 @@ export async function handleKGLoginQrCheck(key) {
   if (vipType) cookiePatch.vip_type = String(vipType);
   try {
     await persistKGLoginCookies(cookiePatch);
-  } catch (_) {}
+  } catch {}
   // QR token is android-compatible (appid 1005) — store as appToken for cloudlist/VIP.
   await saveKGVipSessionCache(userId, {
     appToken: token,

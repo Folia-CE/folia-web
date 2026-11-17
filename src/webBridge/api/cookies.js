@@ -152,7 +152,7 @@ function cookieDomainForUrl(baseUrl) {
     if (host === 'kugou.net' || host.endsWith('.kugou.net')) return '.kugou.net';
     if (host.endsWith('.qq.com')) return '.qq.com';
     if (host.endsWith('.163.com')) return '.163.com';
-  } catch (_) {}
+  } catch {}
   return undefined;
 }
 
@@ -225,7 +225,7 @@ export async function saveProviderCookie(provider, cookieHeader) {
     const current = await chrome.storage.local.get([storageKey]);
     const merged = mergeCookieHeaders(current?.[storageKey] || '', cookie);
     await chrome.storage.local.set({ [storageKey]: merged });
-  } catch (_) {}
+  } catch {}
   clearCookieCache();
 }
 
@@ -239,7 +239,7 @@ async function readStoredProviderCookie(provider) {
   try {
     const stored = await chrome.storage.local.get([storageKey]);
     return String(stored?.[storageKey] || '');
-  } catch (_) {
+  } catch {
     return '';
   }
 }
@@ -315,16 +315,16 @@ async function collectCookieHeader(domains, urls, keyNames, keyUrl) {
   const picked = new Map();
   await Promise.all([
     ...(domains || []).map(async (domain) => {
-      try { await mergeCookieList(picked, await chrome.cookies.getAll({ domain })); } catch (_) {}
+      try { await mergeCookieList(picked, await chrome.cookies.getAll({ domain })); } catch {}
     }),
     ...(urls || []).map(async (url) => {
-      try { await mergeCookieList(picked, await chrome.cookies.getAll({ url })); } catch (_) {}
+      try { await mergeCookieList(picked, await chrome.cookies.getAll({ url })); } catch {}
     }),
     ...(keyNames || []).map(async (name) => {
       try {
         const item = await chrome.cookies.get({ url: keyUrl, name });
         if (item && item.value) picked.set(name, item.value);
-      } catch (_) {}
+      } catch {}
     }),
   ]);
   return Array.from(picked.entries())
@@ -345,12 +345,12 @@ export async function getCookieHeader(domains, urls) {
   for (const domain of domains || []) {
     try {
       await mergeCookieList(picked, await chrome.cookies.getAll({ domain }));
-    } catch (_) {}
+    } catch {}
   }
   for (const url of urls || []) {
     try {
       await mergeCookieList(picked, await chrome.cookies.getAll({ url }));
-    } catch (_) {}
+    } catch {}
   }
   return Array.from(picked.entries())
     .map(([name, value]) => `${name}=${value}`)
@@ -460,7 +460,7 @@ export async function removeBrowserCookiesForHosts(hosts, names) {
         clearCookieCache();
         return;
       }
-    } catch (_) {
+    } catch {
       // 批量失败就退回逐条删除。
     }
   }
@@ -495,7 +495,7 @@ function normalizeQQUin(raw) {
 function decodeQQCookieValue(value) {
   try {
     return decodeURIComponent(String(value || '').replace(/\+/g, '%20')).trim();
-  } catch (_) {
+  } catch {
     return String(value || '').trim();
   }
 }
@@ -548,7 +548,7 @@ function decodeKGCookieValue(value) {
   if (/%u[0-9a-fA-F]{4}/.test(value)) value = decodeKGUnicodeEscapes(value);
   try {
     return decodeURIComponent(value.replace(/\+/g, '%20')).trim();
-  } catch (_) {
+  } catch {
     return value.trim();
   }
 }
@@ -558,7 +558,7 @@ function expandKGCookieObject(obj) {
   for (const key of ['KuGoo', 'Kugoo', 'KGLogin', 'kguser']) {
     let raw = obj[key];
     if (!raw) continue;
-    try { raw = decodeURIComponent(String(raw).replace(/\+/g, '%20')); } catch (_) { raw = String(raw); }
+    try { raw = decodeURIComponent(String(raw).replace(/\+/g, '%20')); } catch { raw = String(raw); }
     const kuGooFields = {};
     String(raw).split('&').forEach((pair) => {
       const idx = pair.indexOf('=');
@@ -692,7 +692,7 @@ export async function getNeteaseMusicU() {
   try {
     const item = await chrome.cookies.get({ url: 'https://music.163.com/', name: 'MUSIC_U' });
     return item && item.value ? item.value : '';
-  } catch (_) {
+  } catch {
     return '';
   }
 }

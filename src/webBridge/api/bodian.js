@@ -50,7 +50,7 @@ const loadSession = () => {
         user: parsed.user && typeof parsed.user === 'object' ? parsed.user : null,
       };
     }
-  } catch (_) {}
+  } catch { }
 };
 
 const getSession = () => {
@@ -62,14 +62,14 @@ const setSession = (session) => {
   loadSession();
   sessionState.session = session;
   sessionState.revision += 1;
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(session)); } catch (_) {}
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(session)); } catch { }
 };
 
 const clearSession = () => {
   loadSession();
   sessionState.session = null;
   sessionState.revision += 1;
-  try { localStorage.removeItem(STORAGE_KEY); } catch (_) {}
+  try { localStorage.removeItem(STORAGE_KEY); } catch { }
 };
 
 class BodianError extends Error {
@@ -112,7 +112,7 @@ const readResponsePayload = async (response) => {
       try {
         const stream = fallback.body.pipeThrough(new DecompressionStream('gzip'));
         return await new Response(stream).json();
-      } catch (_) {}
+      } catch { }
     }
     const contentType = response.headers.get('content-type') || 'unknown';
     throw new BodianError(
@@ -602,11 +602,11 @@ const deviceId = (() => {
   try {
     const existing = localStorage.getItem(key);
     if (/^[a-f0-9]{32}$/i.test(existing || '')) return existing.toLowerCase();
-  } catch (_) {}
+  } catch { }
   const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
   const value = Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
-  try { localStorage.setItem(key, value); } catch (_) {}
+  try { localStorage.setItem(key, value); } catch { }
   return value;
 })();
 

@@ -1,5 +1,5 @@
 ﻿import { createRequire } from 'node:module';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 const require = createRequire('D:/folia/folia-web/dev/dedicatus/lint/node_modules/eslint/package.json');
 const { ESLint } = require('eslint');
 const eslint = new ESLint({ cwd: 'D:/folia/folia-web' });
@@ -15,11 +15,12 @@ for (const r of results) {
   }
 }
 const sup = JSON.parse(readFileSync('D:/folia/folia-web/eslint-suppressions.json', 'utf8'));
-let over = 0;
+const lines = [];
 for (const [file, counts] of Object.entries(actual)) {
   for (const [rule, n] of Object.entries(counts)) {
     const recorded = sup[file]?.[rule]?.count ?? 0;
-    if (n > recorded) { console.log(`OVER ${file} | ${rule} | recorded ${recorded} | actual ${n}`); over++; }
+    if (n > recorded) lines.push(`${file} | ${rule} | recorded ${recorded} | actual ${n}`);
   }
 }
-console.log('total over:', over);
+writeFileSync('D:/folia/folia-web/.lint-over.txt', lines.join('\n'));
+console.log('over rows:', lines.length);

@@ -2,11 +2,12 @@
 // 装配层测试：单元测试里注入 fake visibility 永远绿，测不到「生产有没有接线」。
 // 这条专门钉住接线本身 —— 没有它，P1/scannedTimer 的修复可以在生产是死代码而测试全绿。
 import { describe, expect, it, vi } from 'vitest';
+import type * as ProviderLoginSessionModule from '@/library/core/account/providerLoginSession.service';
 
 const capturedDeps: Array<Record<string, unknown>> = [];
 
 vi.mock('@/library/core/account/providerLoginSession.service', async importOriginal => {
-    const actual = await importOriginal<typeof import('@/library/core/account/providerLoginSession.service')>();
+    const actual = await importOriginal<typeof ProviderLoginSessionModule>();
     return {
         ...actual,
         createProviderLoginSession: (deps: Record<string, unknown>) => {

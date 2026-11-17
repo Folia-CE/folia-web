@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createProviderAccountController, LOGIN_CHECK_LIMIT_MS, SETUP_POLL_MS } from '@/library/core/account/providerAccountController.service';
-import { PROVIDER_LOGIN_POLL_INTERVAL_MS } from '@/library/core/account/providerLoginSession.service';
 import type {
     LibraryAccountAuthPort,
     LibraryAccountClock,
@@ -20,7 +19,6 @@ import type { LoginLocalService, LoginLocalServiceStatus, LoginMethod, LoginStat
 // 这个平台的歌移出播放器）、当前平台回落写回、快照身份稳定、dispose。原来 providerSwitchTransaction.test.ts 的切换 / 登录事务逐条
 // 在这里（标注 [txn]）。端口全是假的；时钟是手动推进的假时钟。
 
-const POLL = PROVIDER_LOGIN_POLL_INTERVAL_MS;
 
 /** 手动时钟：advance 按到期顺序逐个触发计时器，每次触发前后把微任务排空（让 await 链走完）。 */
 const createManualClock = (start = 1_700_000_000_000) => {

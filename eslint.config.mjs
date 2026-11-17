@@ -119,6 +119,7 @@ export default tseslint.config(
             'no-shadow-restricted-names': 'off',
             'no-prototype-builtins': 'off',
             'preserve-caught-error': 'off',
+            'no-useless-assignment': 'off',
             '@eslint-community/eslint-comments/require-description': 'off',
             '@stylistic/indent': 'off',
             '@stylistic/quotes': 'off',

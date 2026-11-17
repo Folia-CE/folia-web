@@ -1702,7 +1702,6 @@ async function fetchKGAndroidFastSongUrl(hash, albumId, albumAudioId, cookieHead
   const mid = await getKGMid(cookieHeader);
   const dfid = kgCookieDfid(cookieHeader) || kgRandomString(24);
   const clienttime = Math.floor(Date.now() / 1000);
-  const cached = await loadKGVipSessionCache(userId);
   const params = {
     album_id: Number(albumId) || 0,
     area_code: 1,
@@ -2744,7 +2743,7 @@ async function fetchKGTrackerOnce(host, vipType, hash, albumId, albumAudioId, co
   const trackerHost = u.host;
   const trackerStartedAt = Date.now();
   noteLibraryStep('kugou', 'url:http:start', { name: 'tracker', host: trackerHost, vipType });
-  let body = null;
+  let body;
   try {
     body = await kgFetchJSON(u.toString(), {
       mobile: true,

@@ -369,7 +369,7 @@ async function fetchDailyRecommendSongs(cookie) {
       const body = await api(path, {}, cookie);
       const raw = extractDailyRecommendSongs(body);
       if (raw.length) return raw;
-    } catch (_) {}
+    } catch {}
   }
   return [];
 }
@@ -386,7 +386,7 @@ async function backfillSongCovers(songs, cookie) {
       if (pic) idToPic[s.id] = pic;
     });
     return list.map((s) => (s.cover ? s : { ...s, cover: idToPic[s.id] || '' }));
-  } catch (_) {
+  } catch {
     return list;
   }
 }
@@ -450,7 +450,7 @@ async function enrichLoginInfoWithVip(info, cookie) {
       userId,
       pendingProfile: info.pendingProfile && !(info.nickname && info.nickname !== '网易云用户'),
     };
-  } catch (_) {}
+  } catch {}
   return info;
 }
 
@@ -477,7 +477,7 @@ export async function getLoginInfo(cookie) {
       const extracted = extractAccountPayload(acc);
       const info = normalizeLoginInfo(extracted.profile, extracted.account, extracted.root);
       if (info.loggedIn) return enrichLoginInfoWithVip({ ...info, hasCookie: true }, cookie);
-    } catch (_) {}
+    } catch {}
   }
   /*
    * 走到这里说明手里确实有 MUSIC_U，只是账号接口没给出资料（网关抽风 / 结构变了）。
@@ -519,13 +519,13 @@ export async function handleSearch(keywords, limit, cookie, offset) {
       if (!list.length) throw new Error('empty');
       return list;
     }));
-  } catch (_) {
+  } catch {
     for (const [path, data] of searchPaths) {
       try {
         const body = await api(path, data, cookie);
         songs = (body.result && body.result.songs) || body.songs || [];
         if (songs.length) break;
-      } catch (_) {}
+      } catch {}
     }
   }
   let mapped = songs.map(mapSongRecord);
@@ -539,7 +539,7 @@ export async function handleSearch(keywords, limit, cookie, offset) {
         if (pic) idToPic[s.id] = pic;
       });
       mapped = mapped.map((s) => (s.cover ? s : { ...s, cover: idToPic[s.id] || '' }));
-    } catch (_) {}
+    } catch {}
   }
   return mapped;
 }
@@ -635,13 +635,13 @@ export async function handleSongUrl(id, cookie, qualityPreference) {
 }
 
 export async function handleLyric(id, cookie) {
-  let body = {};
+    let body;
   try {
     // yv: 1 = 要逐字（YRC）。以前这里一片 0，平台只回整行 LRC，
     // 壁纸那条时间轴就只能按整行跳 —— 用户反馈「后台歌词不跟逐字」。
     // 拿不到逐字时 yrc 是空的，取词方按整行 LRC 走，与以前一样。
     body = await api('/api/song/lyric/v1', { id, cp: false, tv: 0, lv: 0, rv: 0, kv: 0, yv: 1, ytv: 0, yrv: 0 }, cookie);
-  } catch (_) {
+  } catch {
     body = await api('/api/song/lyric', { id, lv: -1, tv: -1 }, cookie);
   }
   return {
@@ -711,14 +711,14 @@ async function resolveNeteaseUserId(cookie, info) {
       const extracted = extractAccountPayload(acc);
       const merged = normalizeLoginInfo(extracted.profile, extracted.account, extracted.root);
       if (merged.userId) return { ...info, ...merged };
-    } catch (_) {}
+    } catch {}
   }
   try {
     const vipBody = await api('/api/music-vip-membership/front/vip/info', {}, cookie);
     const data = vipBody.data || vipBody;
     const userId = data.userId || data.uid || data.accountId || pickUserIdFromPayload(vipBody);
     if (userId) return { ...info, userId };
-  } catch (_) {}
+  } catch {}
   return info || { loggedIn: false };
 }
 
@@ -755,20 +755,20 @@ export async function handleUserPlaylists(cookie, limit) {
 
 export async function handlePlaylistTracks(id, cookie) {
   cookie = await ensureNeteaseCookieHeader(cookie);
-  let body = {};
+    let body;
   let rawTracks = [];
   let pl = {};
   try {
     body = await api('/api/v6/playlist/detail', { id, n: 1000, s: 8 }, cookie);
     pl = body.playlist || (body.data && body.data.playlist) || {};
     rawTracks = pl.tracks || body.tracks || (body.data && body.data.tracks) || [];
-  } catch (_) {}
+  } catch {}
   if (!rawTracks.length) {
     try {
       const all = await api('/api/v3/playlist/detail', { id, n: 1000, s: 8 }, cookie);
       pl = all.playlist || (all.data && all.data.playlist) || pl;
       rawTracks = pl.tracks || all.tracks || (all.data && all.data.tracks) || rawTracks;
-    } catch (_) {}
+    } catch {}
   }
   const tracks = (Array.isArray(rawTracks) ? rawTracks : [])
     .map(mapSongRecord)
@@ -804,14 +804,14 @@ export async function handleSongLikeCheck(ids, cookie) {
       numericIds.forEach((id) => {
         if (data[id] || data[String(id)] || data[Number(id)]) likedSet.add(String(id));
       });
-    } catch (_) {}
+    } catch {}
   }
   if (!likedSet.size && info.userId) {
     try {
       const body = await weapiApi('/api/song/like/get', { uid: info.userId }, cookie);
       const list = body.ids || (body.data && body.data.ids) || [];
       likedSet = new Set(list.map(String));
-    } catch (_) {}
+    } catch {}
   }
   ids.forEach((id) => {
     liked[id] = likedSet.has(String(id));
@@ -917,17 +917,17 @@ export async function handleArtistDetail(id, limit, cookie) {
   let detailBody = {};
   try {
     detailBody = await api('/api/artist/head/info/get', { id }, cookie);
-  } catch (_) {}
+  } catch {}
   let rawSongs = [];
   try {
     const list = await api('/api/v1/artist/songs', { id, order: 'hot', limit, offset: 0 }, cookie);
     rawSongs = list.songs || (list.data && list.data.songs) || [];
-  } catch (_) {}
+  } catch {}
   if (!rawSongs.length) {
     try {
       const top = await api('/api/artist/top/song', { id }, cookie);
       rawSongs = top.songs || (top.data && top.data.songs) || [];
-    } catch (_) {}
+    } catch {}
   }
   const dataBlock = detailBody.data || detailBody;
   const artist = detailBody.artist || dataBlock.artist || dataBlock || {};
@@ -942,7 +942,7 @@ export async function handleArtistDetail(id, limit, cookie) {
   };
 }
 
-function mapCommentRecords(raw, offset) {
+function mapCommentRecords(raw) {
   const list = Array.isArray(raw) ? raw : [];
   return list
     .map((c) => ({
@@ -965,7 +965,7 @@ function parseCommentResponseBody(body, offset) {
   const raw = offset === 0 && Array.isArray(hotComments) && hotComments.length ? hotComments : comments;
   return {
     total: root.total || body.total || comments.length,
-    comments: mapCommentRecords(raw, offset),
+    comments: mapCommentRecords(raw),
     hot: !!(offset === 0 && hotComments.length),
   };
 }
@@ -988,7 +988,7 @@ export async function handleSongComments(id, limit, offset, cookie) {
     async () => {
       const body = await weapiApi('/api/comment/hot', { id: songId, type: 0, limit, offset }, cookie);
       const hot = (body.hotComments || (body.data && body.data.hotComments) || []);
-      const comments = mapCommentRecords(hot.length ? hot : (body.comments || []), offset);
+      const comments = mapCommentRecords(hot.length ? hot : (body.comments || []));
       return { total: body.total || comments.length, comments, hot: !!hot.length };
     },
   ];
@@ -1055,12 +1055,12 @@ async function fetchMyPodcastItems(key, info, limit, offset, cookie) {
     try {
       const body = await api('/api/sati/resource/sub/list', {}, cookie);
       raw = firstArrayFrom(body, ['data', 'resources', 'list']);
-    } catch (_) {}
+    } catch {}
     if (!raw.length) {
       try {
         const body = await api('/api/play-record/voice/list', { limit }, cookie);
         raw = firstArrayFrom(body, ['data', 'list', 'resources']);
-      } catch (_) {}
+      } catch {}
     }
     return { itemType: 'voice', items: raw.map(mapPodcastVoice).filter((x) => x.id && x.name) };
   }
@@ -1079,7 +1079,7 @@ export async function handlePodcastMy(cookie) {
       try {
         const data = await fetchMyPodcastItems(key, info, 12, 0, cookie);
         return podcastCollectionMeta(key, data.items || []);
-      } catch (_) {
+      } catch {
         return podcastCollectionMeta(key, []);
       }
     }),
@@ -1111,7 +1111,7 @@ export async function handlePlaylistCreate(name, privacy, cookie) {
 export async function handlePlaylistAddSong(pid, id, cookie) {
   const info = await getLoginInfo(cookie);
   if (!info.loggedIn) return { error: 'LOGIN_REQUIRED', loggedIn: false };
-  let finalBody = null;
+    let finalBody;
   let finalCode = 0;
   let success = false;
   try {
@@ -1169,12 +1169,12 @@ async function neteaseQrEapi(path, data, cookie) {
 }
 
 export async function handleLoginQrKey(cookie) {
-  let body = {};
+    let body;
   try {
     // type:3 is the eapi / App QR key type (verified working)
     ({ body } = await neteaseQrEapi('/api/login/qrcode/unikey', { type: 3 }, cookie));
   } catch (err) {
-    throw new Error((err && err.message) || '获取二维码 key 失败');
+    throw new Error((err && err.message) || '获取二维码 key 失败', { cause: err });
   }
   const key = body.unikey || body.uniKey || (body.data && (body.data.unikey || body.data.uniKey)) || '';
   if (!key) {
@@ -1194,8 +1194,8 @@ export async function handleLoginQrCreate(key) {
 export async function handleLoginQrCheck(key, cookieHeader) {
   key = String(key || '').trim();
   if (!key) return { code: 800, message: '缺少二维码 key', loggedIn: false };
-  let body = {};
-  let setCookies = [];
+  let body;
+  let setCookies;
   try {
     const raw = await neteaseQrEapi('/api/login/qrcode/client/login', { key, type: 3 }, cookieHeader);
     body = raw.body || {};
@@ -1231,7 +1231,7 @@ export async function handleLoginQrCheck(key, cookieHeader) {
             httpOnly: true,
           }).catch(() => null);
         }
-      } catch (_) {}
+      } catch {}
     }
     const cookie = await getNeteaseCookie();
     let info = await getLoginInfo(cookie);
@@ -1380,7 +1380,7 @@ async function enrichFeaturedSongSeeds(seeds, cookie) {
       if (!hit) return seed;
       return Object.assign({}, seed, hit, { name: hit.name || seed.name, artist: hit.artist || seed.artist });
     });
-  } catch (_) {
+  } catch {
     return seeds;
   }
 }
@@ -1395,15 +1395,10 @@ async function resolveFeaturedReviewSeeds(seedSongs, cookie) {
     try {
       const raw = await fetchDailyRecommendSongs(cookie);
       songSeeds = raw.slice(0, FEATURED_REVIEW_SONG_LIMIT + 1).map(mapSongRecord).map(cloneFeaturedSongSeed).filter((s) => s.id);
-    } catch (_) {}
+    } catch {}
   }
   if (!songSeeds.length) songSeeds = HOME_FEATURED_REVIEW_FALLBACKS.map(cloneFeaturedSongSeed);
   return enrichFeaturedSongSeeds(songSeeds, cookie);
-}
-
-async function enrichFeaturedSongSeed(song, cookie) {
-  const seeds = await enrichFeaturedSongSeeds([song], cookie);
-  return seeds[0] || cloneFeaturedSongSeed(song);
 }
 
 async function collectFeaturedReviewsForSeeds(songSeeds, neteaseCookie, qqCookie) {
@@ -1425,7 +1420,7 @@ async function collectFeaturedReviewsForSeeds(songSeeds, neteaseCookie, qqCookie
       if (!id) return;
       const res = await handleSongComments(id, FEATURED_REVIEW_FETCH_LIMIT, 0, neteaseCookie);
       (res.comments || []).slice(0, FEATURED_REVIEW_PICK_PER_SONG).forEach((c) => pushFeaturedReview(reviews, c, enriched));
-    } catch (_) {}
+    } catch {}
   }));
   reviews.sort((a, b) => (b.likedCount || 0) - (a.likedCount || 0));
   const picked = [];

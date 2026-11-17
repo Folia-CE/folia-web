@@ -81,7 +81,7 @@ export async function handleQQLoginQrCheck(qrsig, ptqrtoken) {
           session: result.session,
         };
       }
-    } catch (_) {}
+    } catch {}
   }
   // 换票被判定失败前再确认一次登录态：手机上已经确认、cookie 罐里也有有效会话时，
   // 不该因为一次换票失败把用户挡在门外。
@@ -104,7 +104,7 @@ export async function handleQQLoginQrCheck(qrsig, ptqrtoken) {
           retryable: true,
         };
       }
-    } catch (_) {}
+    } catch {}
   }
   return result;
 }
@@ -191,7 +191,7 @@ function decodeQQLyricText(text) {
       const decoded = decodeURIComponent(escape(bin));
       if (decoded && (decoded.includes('[') || /[\u4e00-\u9fa5]/.test(decoded))) raw = decoded;
     }
-  } catch (_) {}
+  } catch {}
   return decodeHtmlEntities(raw).replace(/\r\n/g, '\n').trim();
 }
 
@@ -267,7 +267,7 @@ async function qqSongDetailsBatch(items, cookieHeader) {
   if (items.length === 1) {
     try {
       mergeQQSearchEnrich(items[0], await qqSongDetail(items[0].mid, items[0], cookieHeader));
-    } catch (_) {}
+    } catch {}
     return items;
   }
   // The upstream detail endpoint starts rejecting the request once the mid list
@@ -305,7 +305,7 @@ async function qqSongDetailsBatch(items, cookieHeader) {
           chunk.forEach((item) => {
             if (byMid[item.mid]) mergeQQSearchEnrich(item, byMid[item.mid]);
           });
-        } catch (_) {}
+        } catch {}
       }),
     );
   }
@@ -323,7 +323,7 @@ async function qqSongDetailsBatch(items, cookieHeader) {
     missing.slice(0, 30).map(async (item) => {
       try {
         mergeQQSearchEnrich(item, await qqSongDetail(item.mid, item, cookieHeader));
-      } catch (_) {}
+      } catch {}
     }),
   );
   return items;
@@ -653,14 +653,14 @@ export async function warmQQLoginCookies() {
       redirect: 'follow',
       headers: { 'User-Agent': UA, Referer: 'https://y.qq.com/' },
     });
-  } catch (_) {}
+  } catch {}
   clearCookieCache();
   return getQQCookie();
 }
 
 export async function getQQLoginStatus(cookieHeader) {
   if (!cookieHeader) {
-    try { cookieHeader = await warmQQLoginCookies(); } catch (_) { cookieHeader = ''; }
+    try { cookieHeader = await warmQQLoginCookies(); } catch { cookieHeader = ''; }
   }
   const uin = qqCookieUin(cookieHeader);
   const musicKey = qqCookieMusicKey(cookieHeader);
@@ -687,7 +687,7 @@ export async function getQQLoginStatus(cookieHeader) {
       fetchQQProfileHomepage(uin, cookieHeader).catch(() => null),
       fetchQQVipQuery(uin, cookieHeader).catch(() => null),
     ]);
-  } catch (_) {}
+  } catch {}
   const info = normalizeQQProfile(profileBody, cookieHeader);
   const vip = normalizeQQVipFields(profileBody, vipQueryBody, cookieHeader);
   const merged = {
@@ -755,12 +755,12 @@ export async function handleQQSongUrl(mid, mediaMid, qualityPreference, cookieHe
       const detail = await qqSongDetail(songmid, {}, cookieHeader);
       detailMeta = detail || null;
       fileMediaMid = String(detail && detail.mediaMid || '').trim();
-    } catch (_) {}
+    } catch {}
   }
   if (!detailMeta) {
     try {
       detailMeta = await qqSongDetail(songmid, {}, cookieHeader);
-    } catch (_) {}
+    } catch {}
   }
   const requestedQuality = normalizeQualityPreference(qualityPreference);
   const mediaIds = [];
@@ -880,7 +880,7 @@ export async function handleQQSongComments(id, mid, limit, offset, cookieHeader)
     try {
       const detail = await qqSongDetail(mid, { mid }, cookieHeader);
       topid = String((detail && (detail.qqId || detail.id)) || '').replace(/\D/g, '');
-    } catch (_) {}
+    } catch {}
   }
   if (!topid) return { provider: 'qq', error: 'Missing QQ song id', comments: [] };
   try {
@@ -930,7 +930,7 @@ async function resolveQQSongNumericId(id, mid, cookieHeader) {
         const detailId = String((detail && detail.id) || '').trim();
         if (detailId && !isQQSongMid(detailId)) songId = detailId.replace(/\D/g, '');
       }
-    } catch (_) {}
+    } catch {}
   }
   return songId;
 }
@@ -989,7 +989,7 @@ async function fetchQQFavCatalog(cookieHeader) {
       loginUin: uin,
       hostUin: uin,
     }, cookieHeader);
-  } catch (_) {}
+  } catch {}
   const sets = collectQQFavSets(body || {});
   if (!sets.idSet.size && !sets.midSet.size) {
     try {
@@ -1003,7 +1003,7 @@ async function fetchQQFavCatalog(cookieHeader) {
       }, cookieHeader);
       const list = (((json.req_0 || {}).data || {}).songIds) || (((json.req_0 || {}).data || {}).songIdList) || [];
       list.map(String).forEach((id) => sets.idSet.add(id));
-    } catch (_) {}
+    } catch {}
   }
   return sets;
 }
@@ -1163,14 +1163,14 @@ export async function handleQQSongLike(id, mid, like, cookieHeader) {
           const res = await qqPlaylistDetailWrite('AddSonglist', songId, cookieHeader, songType);
           if (res && res.loginRequired) return { provider: 'qq', error: 'LOGIN_REQUIRED', loggedIn: false, mid: songMid };
           if (res && res.ok) return { provider: 'qq', loggedIn: true, id: songId, mid: songMid, liked: true, code: res.code || 0, via: 'PlaylistDetailWrite' };
-        } catch (_) {}
+        } catch {}
       }
       for (const songType of [0, 13]) {
         try {
           const res = await qqSongFavWrite('AddSong', songId, cookieHeader, songType);
           if (res && res.loginRequired) return { provider: 'qq', error: 'LOGIN_REQUIRED', loggedIn: false, mid: songMid };
           if (res && res.ok) return { provider: 'qq', loggedIn: true, id: songId, mid: songMid, liked: true, code: res.code || 0, via: 'SongFavWrite' };
-        } catch (_) {}
+        } catch {}
       }
     }
     if (songMid) {
@@ -1197,14 +1197,14 @@ export async function handleQQSongLike(id, mid, like, cookieHeader) {
         const res = await qqPlaylistDetailWrite('DelSonglist', delId, cookieHeader, songType);
         if (res && res.loginRequired) return { provider: 'qq', error: 'LOGIN_REQUIRED', loggedIn: false, mid: songMid };
         if (res && res.ok) return { provider: 'qq', loggedIn: true, id: delId, mid: songMid, liked: false, code: res.code || 0, via: 'PlaylistDetailWrite' };
-      } catch (_) {}
+      } catch {}
     }
     for (const songType of [0, 13]) {
       try {
         const res = await qqSongFavWrite('DelSong', delId, cookieHeader, songType);
         if (res && res.loginRequired) return { provider: 'qq', error: 'LOGIN_REQUIRED', loggedIn: false, mid: songMid };
         if (res && res.ok) return { provider: 'qq', loggedIn: true, id: delId, mid: songMid, liked: false, code: res.code || 0, via: 'SongFavWrite' };
-      } catch (_) {}
+      } catch {}
     }
     try {
       const res = await qqDelFromFavById(delId, cookieHeader);
@@ -1695,7 +1695,7 @@ async function fetchQQFavPlaylistTracks(cookieHeader) {
     const songs = mapQQPlaylistSonglist(items);
     if (!songs.length) return null;
     return { meta: { name: '我喜欢', cover: '' }, songs };
-  } catch (_) {}
+  } catch {}
   return null;
 }
 
@@ -1730,7 +1730,7 @@ export async function handleQQPlaylistTracks(id, cookieHeader, options) {
         songs = result.songs;
         break;
       }
-    } catch (_) {}
+    } catch {}
   }
 
   const outMeta = {
@@ -1769,7 +1769,7 @@ export async function handleQQLyric(mid, id, cookieHeader) {
     const data = json && json.lyric && json.lyric.data;
     lyricText = decodeQQLyricText(data && data.lyric);
     transText = decodeQQLyricText(data && data.trans);
-  } catch (_) {}
+  } catch {}
   if (!lyricText && songMID) {
     try {
       const body = await qqGetJSON('https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg', {
@@ -1788,7 +1788,7 @@ export async function handleQQLyric(mid, id, cookieHeader) {
       }, cookieHeader);
       lyricText = decodeQQLyricText(body && body.lyric);
       transText = decodeQQLyricText(body && (body.trans || body.tlyric)) || transText;
-    } catch (_) {}
+    } catch {}
   }
   return {
     provider: 'qq',

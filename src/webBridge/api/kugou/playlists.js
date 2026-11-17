@@ -241,7 +241,7 @@ const aesDecrypt = (key, str) => {
     const text = decrypted.toString(CryptoJS.enc.Utf8);
     try {
         return JSON.parse(text);
-    } catch (_) {
+    } catch {
         return null;
     }
 };

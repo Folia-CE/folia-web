@@ -29,9 +29,7 @@ import {
   getQQLoginStatus,
   handleQQLoginQrCreate,
   handleQQLoginQrCheck,
-  handleQQSearch,
   handleQQSongUrl,
-  handleQQLyric,
   handleQQUserPlaylists,
   handleQQPlaylistTracks,
   qqSongDetail,
@@ -87,7 +85,6 @@ import {
   handleKGLoginQrCheck,
   handleKGLoginQrCreate,
   handleKGLoginQrKey,
-  handleKGLyric,
   handleKGPersonalFm,
   handleKGPlaylistTracks,
   handleKGSearch,
@@ -128,7 +125,7 @@ function parseInput(input) {
   if (typeof body === 'string') {
     try {
       body = JSON.parse(body);
-    } catch (_) {
+    } catch {
       body = {};
     }
   }
@@ -186,7 +183,7 @@ async function plainApiJson(path, data, cookie) {
     query.set(key, String(value));
   });
   const search = query.toString();
-  let body = {};
+  let body;
   try {
     const resp = await fetch(`https://music.163.com${path}${search ? `?${search}` : ''}`, {
       method: 'GET',
@@ -199,10 +196,10 @@ async function plainApiJson(path, data, cookie) {
     });
     try {
       body = await resp.json();
-    } catch (_) {
+    } catch {
       body = {};
     }
-  } catch (_) {
+  } catch {
     body = {};
   }
   return body;
@@ -249,10 +246,6 @@ async function requireLoginInfo(cookie) {
   return await getLoginInfo(cookie);
 }
 
-function jsonBody(body) {
-  return body && typeof body === 'object' ? body : {};
-}
-
 function encodeBridgeKey(value) {
   return btoa(unescape(encodeURIComponent(JSON.stringify(value || {}))));
 }
@@ -260,7 +253,7 @@ function encodeBridgeKey(value) {
 function decodeBridgeKey(value) {
   try {
     return JSON.parse(decodeURIComponent(escape(atob(String(value || '')))));
-  } catch (_) {
+  } catch {
     return {};
   }
 }
@@ -277,7 +270,7 @@ function qqChannelOf(value) {
 function describeUrlHost(value) {
   try {
     return new URL(String(value)).host || 'empty';
-  } catch (_) {
+  } catch {
     return 'unparseable';
   }
 }
@@ -490,7 +483,7 @@ async function handleSongUrlV1(url, cookie) {
 async function handleLyricNew(url, cookie) {
   const id = firstValue(url.searchParams.get('id'), url.searchParams.get('ids'));
   if (!id) return { code: 200, lrc: { lyric: '' }, tlyric: { lyric: '' }, yrc: { lyric: '' } };
-  let body = {};
+  let body;
   try {
     body = await eapiJson('/api/song/lyric/v1', {
       id,
@@ -503,7 +496,7 @@ async function handleLyricNew(url, cookie) {
       ytv: 0,
       yrv: 0,
     }, cookie);
-  } catch (_) {
+  } catch {
     const fallback = await handleLyric(id, cookie);
     body = {
       lrc: { lyric: fallback?.lyric || '' },
@@ -691,7 +684,7 @@ async function handlePersonalFm(url, cookie) {
   try {
     const result = await eapiJson('/api/personal/fm/mode', body, cookie);
     if (Array.isArray(result?.data) && result.data.length) return result;
-  } catch (_) {}
+  } catch {}
   return await eapiJson('/api/v1/radio/get', {}, cookie);
 }
 
@@ -1554,8 +1547,8 @@ async function withBridgeSession(provider, result) {
   let cookies = '';
   try {
     cookies = String((await currentProviderSession(provider)) || '').trim();
-  } catch (_) {
-    cookies = '';
+  } catch {
+    // 读不出会话就当没有：空 cookies 不会写进答复。
   }
   if (!cookies) return result;
   return { ...result, __foliaBridgeSession: { provider, cookies } };

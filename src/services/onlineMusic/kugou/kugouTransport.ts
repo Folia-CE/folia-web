@@ -2,7 +2,7 @@ import md5 from 'blueimp-md5';
 import { OnlineProviderError } from '../../../types/onlineMusic';
 import { readProviderSessionValue, removeProviderSessionValue, writeProviderSessionValue } from '../providerStorage';
 import { lyricProxyWebUrl, requestLyricProxyOnDesktop } from '../../lyricProxy';
-import { isWebBridgeAvailable, isWebBridgeAvailableSync, requestWebBridge } from '../../webBridge';
+import { isWebBridgeAvailable, isWebBridgeAvailableSync, requestWebBridge, type BridgeFailure } from '../../webBridge';
 import { withLoginRequestLimit } from '../login/loginRequestLimit';
 
 // src/services/onlineMusic/kugou/kugouTransport.ts
@@ -521,21 +521,22 @@ export const requestKugou = async <T = unknown>(operation: KugouOperation, param
         // adoptRequestSession）。答复里的会话照旧由 persistWebSession 收。
         const carried = readProviderSessionValue('kugou', 'cookie');
         try {
-            const bridged = await requestWebBridge<any>({
+            const bridged: unknown = await requestWebBridge({
                 provider: 'kugou',
                 operation,
                 method: 'GET',
                 params,
                 ...(carried ? { sessionCookies: carried } : {}),
             });
-            if (bridged?.__foliaBridgeError) {
-                if (bridged.__foliaBridgeError === 'AUTH_REQUIRED') {
-                    throw new OnlineProviderError('auth-required', bridged.message || 'KuGou login required', 'kugou', bridged);
+            const failure = bridged as BridgeFailure | null | undefined;
+            if (failure?.__foliaBridgeError) {
+                if (failure.__foliaBridgeError === 'AUTH_REQUIRED') {
+                    throw new OnlineProviderError('auth-required', failure.message || 'KuGou login required', 'kugou', bridged);
                 }
-                if (bridged.__foliaBridgeError === 'UNSUPPORTED') {
-                    throw new OnlineProviderError('unsupported', bridged.message || `KuGouMusicApi has no ${operation} route`, 'kugou', bridged);
+                if (failure.__foliaBridgeError === 'UNSUPPORTED') {
+                    throw new OnlineProviderError('unsupported', failure.message || `KuGouMusicApi has no ${operation} route`, 'kugou', bridged);
                 }
-                throw new OnlineProviderError('network', bridged.message || bridged.__foliaBridgeError, 'kugou', bridged);
+                throw new OnlineProviderError('network', failure.message || failure.__foliaBridgeError, 'kugou', bridged);
             }
             persistWebSession(operation, bridged);
             return bridged as T;

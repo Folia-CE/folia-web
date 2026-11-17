@@ -158,6 +158,15 @@ type BridgePayload = {
 /** 答复里会话的字段，与 `src/webBridge/api/folia.js` 的 `__foliaBridgeSession` 一致。 */
 export type BridgeSessionPayload = { provider?: string; cookies?: string };
 
+/**
+ * 桥答复的失败面：正常答复就是上游 JSON（形状各家不同），失败时是这几个固定字段。
+ * transport 拿到 unknown 后先用它收窄，再继续读业务字段 —— 避免为省事写 `any`。
+ */
+export type BridgeFailure = {
+    __foliaBridgeError?: 'AUTH_REQUIRED' | 'UNSUPPORTED' | 'NETWORK' | (string & {});
+    message?: string;
+};
+
 /** 从一次桥答复里取出会话（没有就返回空串）。凭据的值不进日志。 */
 export const readBridgeSession = (answer: unknown): string => {
     const session = (answer as { __foliaBridgeSession?: BridgeSessionPayload } | null | undefined)?.__foliaBridgeSession;

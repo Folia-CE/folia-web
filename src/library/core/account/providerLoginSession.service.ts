@@ -806,7 +806,7 @@ export const createProviderLoginSession = (deps: ProviderLoginSessionDeps): Prov
                     clearCachedLoginQr(qrCache, revoking.providerId, round.methodId);
                     try {
                         void Promise.resolve(auth.cancelLogin(revoking.providerId, revoking.key))
-                            .catch(error => log('warn', 'cancel:error', { providerId: revoking.providerId, ...describeLoginError(error) }));
+                            .catch((error: unknown) => log('warn', 'cancel:error', { providerId: revoking.providerId, ...describeLoginError(error) }));
                     } catch (error) {
                         log('warn', 'cancel:error', { providerId: revoking.providerId, ...describeLoginError(error) });
                     }
@@ -875,7 +875,7 @@ export const createProviderLoginSession = (deps: ProviderLoginSessionDeps): Prov
                 // 撤销刚生成的码：login_qr_cancel 幂等，代价 1 次上游调用，远小于「两张码并存」。
                 try {
                     void Promise.resolve(auth.cancelLogin(round.providerId, started.key))
-                        .catch(error => log('warn', 'cancel:error', { providerId: round.providerId, ...describeLoginError(error) }));
+                        .catch((error: unknown) => log('warn', 'cancel:error', { providerId: round.providerId, ...describeLoginError(error) }));
                 } catch (error) {
                     log('warn', 'cancel:error', { providerId: round.providerId, ...describeLoginError(error) });
                 }
@@ -906,7 +906,7 @@ export const createProviderLoginSession = (deps: ProviderLoginSessionDeps): Prov
         if (round.inBrowser && !opensItself) {
             void Promise.resolve()
                 .then(() => auth.openLoginPage(round.providerId, started.key))
-                .catch(error => noteOpenPageFailure(round, error));
+                .catch((error: unknown) => noteOpenPageFailure(round, error));
         }
         armTtl(round);
         scheduleNextPoll(round, started.key);

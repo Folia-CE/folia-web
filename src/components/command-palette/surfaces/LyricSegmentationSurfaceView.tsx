@@ -1,12 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { WholeWord } from 'lucide-react';
 import type { LyricData, StatusMessage, Theme } from '../../../types';
 import type { LyricSegmentationRecord, LyricSegmentationSource } from '../../../types/lyricSegmentation';
 import {
     SegmentationImportError,
     buildSegmentationExportText,
     countAppliedSegmentationLines,
-    getLyricLineSegmentationKey,
     parseSegmentationImport,
 } from '../../../utils/lyrics/lyricSegmentationRecord';
 import { buildLyricSegmentationPrompt } from '../../../services/lyricSegmentationAi';

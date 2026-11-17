@@ -4,7 +4,7 @@ import { OnlineProviderError } from '../../../types/onlineMusic';
 import type { PersonalFmRequestOptions, ProviderSongAvailability } from '../../../types/onlineMusic';
 import { withLoginRequestLimit } from '../login/loginRequestLimit';
 import { withOnlineRequestLimit } from '../failure/onlineRequestLimit';
-import { isWebBridgeAvailable, requestWebBridge } from '../../webBridge';
+import { isWebBridgeAvailable, requestWebBridge, type BridgeFailure } from '../../webBridge';
 import { errorFields } from '../../../utils/errorText';
 
 type UnavailableSongReplacement = {
@@ -222,7 +222,7 @@ const fetchWithCreds = async (endpoint: string, options: RequestInit = {}, limit
     const loginCookie = readProviderSessionValue('netease', 'cookie', ['netease_cookie']);
     const sessionCookie = loginCookie || await readOrRegisterAnonymousCookie();
     if (sessionCookie) query.cookie = sessionCookie;
-    const bridged = await requestWebBridge<Record<string, any>>({
+    const bridged = await requestWebBridge<Record<string, unknown>>({
       provider: 'netease',
       operation: target.pathname,
       path: target.pathname,
@@ -231,8 +231,9 @@ const fetchWithCreds = async (endpoint: string, options: RequestInit = {}, limit
       body: options.body,
       headers: Object.fromEntries(new Headers(options.headers || {}).entries()),
     });
-    if (bridged?.__foliaBridgeError) {
-      throw new Error(bridged.message || bridged.__foliaBridgeError);
+    const failure = bridged as BridgeFailure | null | undefined;
+    if (failure?.__foliaBridgeError) {
+      throw new Error(failure.message || failure.__foliaBridgeError);
     }
     // 用了游客会话还被判没登录 = 那份游客会话过期了：丢掉，下一次请求重新注册。
     // （登录态失效是另一回事，不在这里动。）

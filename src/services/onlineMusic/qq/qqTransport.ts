@@ -3,7 +3,7 @@ import { readProviderSessionValue, removeProviderSessionValue, writeProviderSess
 import { LoginRequestTimeout, withLoginRequestLimit } from '../login/loginRequestLimit';
 import { withOnlineRequestLimit } from '../failure/onlineRequestLimit';
 import { lyricProxyWebUrl } from '../../lyricProxy';
-import { isWebBridgeAvailable, isWebBridgeAvailableSync, readBridgeSession, requestWebBridge } from '../../webBridge';
+import { isWebBridgeAvailable, isWebBridgeAvailableSync, readBridgeSession, requestWebBridge, type BridgeFailure } from '../../webBridge';
 import { errorMessage } from '../../../utils/errorText';
 
 // src/services/onlineMusic/qq/qqTransport.ts
@@ -370,7 +370,7 @@ const persistBridgeSession = (answer: unknown): void => {
  * 紧接着的读账号（qqProvider 的 getLoginStatus）会当成「没人登录」直接跳过登录态请求，诊断里只剩
  * `session: backend session stored=no`，随后 signInRanOut 把会话一起清掉。
  */
-const settleAnswer = (operation: QqOperation, body: any): void => {
+const settleAnswer = (operation: QqOperation, body: unknown): void => {
     assertUpstreamAccepted(operation, body);
     persistConfirmedSession(operation, body);
 };
@@ -475,9 +475,9 @@ const requestQqWebBridge = async (
     isPost: boolean,
     session: string,
     payload?: Record<string, unknown>,
-): Promise<any> => {
-    const send = async (): Promise<any> => {
-        const bridged = await requestWebBridge<any>({
+): Promise<unknown> => {
+    const send = async (): Promise<unknown> => {
+        const bridged: unknown = await requestWebBridge({
             provider: 'qq',
             operation,
             method: isPost ? 'POST' : 'GET',
@@ -486,14 +486,15 @@ const requestQqWebBridge = async (
             ...(session ? { sessionCookies: session } : {}),
             ...(payload === undefined ? {} : { body: payload }),
         });
-        if (bridged?.__foliaBridgeError) {
-            if (bridged.__foliaBridgeError === 'AUTH_REQUIRED') {
-                throw new OnlineProviderError('auth-required', bridged.message || 'QQMusicApi login required', 'qq', bridged);
+        const failure = bridged as BridgeFailure | null | undefined;
+        if (failure?.__foliaBridgeError) {
+            if (failure.__foliaBridgeError === 'AUTH_REQUIRED') {
+                throw new OnlineProviderError('auth-required', failure.message || 'QQMusicApi login required', 'qq', bridged);
             }
-            if (bridged.__foliaBridgeError === 'UNSUPPORTED') {
-                throw new OnlineProviderError('unsupported', bridged.message || `QQMusicApi has no ${operation} route`, 'qq', bridged);
+            if (failure.__foliaBridgeError === 'UNSUPPORTED') {
+                throw new OnlineProviderError('unsupported', failure.message || `QQMusicApi has no ${operation} route`, 'qq', bridged);
             }
-            throw new OnlineProviderError('network', bridged.message || bridged.__foliaBridgeError, 'qq', bridged);
+            throw new OnlineProviderError('network', failure.message || failure.__foliaBridgeError, 'qq', bridged);
         }
         return bridged;
     };

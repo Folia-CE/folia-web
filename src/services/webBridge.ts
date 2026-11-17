@@ -67,7 +67,7 @@ const probeBridge = async (): Promise<boolean> => {
             cache: 'no-store',
         });
         // 一个答复都没有（或者不是 Response）：没有桥。
-        return Boolean(response?.ok);
+        return response?.ok === true;
     } catch {
         return false;
     }

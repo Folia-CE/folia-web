@@ -44,7 +44,7 @@ const validateCachedDualTheme = (value: unknown): DualTheme | null => {
  * 这两样设置，所以恒为空 —— 上游用默认设置生成的那批条目正好能对上。
  */
 const buildStagePolicy = (isPureMusic: boolean): string => JSON.stringify({
-    pure: isPureMusic === true,
+    pure: isPureMusic,
     hint: '',
     blocked: [],
 });
@@ -62,12 +62,12 @@ export const resolveStageLyricSource = (input: {
 }): { lyricSource: string; isPureMusic: boolean } => {
     const lines = input.lines ?? [];
     const allText = lines
-        .map((line) => String(line?.fullText ?? ''))
+        .map((line) => line?.fullText ?? '')
         .join('\n')
         .trim();
     const isPureMusic = input.isPureMusic === true || lines.length === 0 || isPureMusicLyricText(allText);
     return {
-        lyricSource: isPureMusic ? String(input.songTitle ?? '').trim() : allText,
+        lyricSource: isPureMusic ? (input.songTitle ?? '').trim() : allText,
         isPureMusic,
     };
 };
@@ -84,7 +84,7 @@ export const resolveStageLyricSource = (input: {
  * 歌名比对用的归一化：大小写、首尾空白、中间多余空格都不该影响「是不是同一首」。
  * 标点和括号**刻意不剥** —— 「(Live)」「(伴奏)」是不同版本，剥掉就会把别版的配色套上来。
  */
-const normalizeSongTitle = (value: string): string => String(value ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+const normalizeSongTitle = (value: string): string => value.trim().toLowerCase().replace(/\s+/g, ' ');
 
 /**
  * 按歌名去云缓存里找一条。
@@ -135,13 +135,13 @@ export const readCloudThemeFromLyrics = async (input: {
     songTitle?: string;
     platform?: string;
 }): Promise<DualTheme | null> => {
-    const songTitle = String(input.songTitle ?? '').trim();
+    const songTitle = (input.songTitle ?? '').trim();
     if (songTitle) {
         const byTitle = await readCloudThemeByTitle(songTitle, input.platform);
         if (byTitle) return byTitle;
     }
 
-    const lyricSource = String(input.lyricSource ?? '');
+    const lyricSource = input.lyricSource;
     if (!lyricSource) return null;
     return readAiCloudCacheTheme<DualTheme>({
         fingerprint: fingerprintLyricSource(

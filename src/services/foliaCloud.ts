@@ -36,7 +36,8 @@ let settingsVersion = 0;
 const listeners = new Set<() => void>();
 
 const normalizeBaseUrl = (value: unknown): string => {
-    const trimmed = String(value ?? '').trim().replace(/\/+$/, '');
+    // 只认字符串：数字/对象混进来都按「没填」处理，别把 [object Object] 拼进地址。
+    const trimmed = (typeof value === 'string' ? value : '').trim().replace(/\/+$/, '');
     if (!trimmed) return '';
     // A bare host is the common hand-typed case; the API always lives under /api.
     return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
@@ -55,7 +56,7 @@ export const readFoliaCloudSettings = (): FoliaCloudSettings => {
         }
     }
     cachedSettings = {
-        enabled: parsed?.enabled === undefined ? true : parsed.enabled !== false,
+        enabled: parsed?.enabled === undefined ? true : parsed.enabled,
         baseUrl: normalizeBaseUrl(parsed?.baseUrl) || DEFAULT_CLOUD_BASE_URL,
     };
     return { ...cachedSettings };
@@ -64,7 +65,7 @@ export const readFoliaCloudSettings = (): FoliaCloudSettings => {
 export const updateFoliaCloudSettings = (patch: Partial<FoliaCloudSettings>): FoliaCloudSettings => {
     const current = readFoliaCloudSettings();
     const next: FoliaCloudSettings = {
-        enabled: patch.enabled === undefined ? current.enabled : patch.enabled !== false,
+        enabled: patch.enabled === undefined ? current.enabled : patch.enabled,
         baseUrl: patch.baseUrl === undefined
             ? current.baseUrl
             : (normalizeBaseUrl(patch.baseUrl) || DEFAULT_CLOUD_BASE_URL),
@@ -114,5 +115,5 @@ export const resolveCloudBaseUrl = (): string => readFoliaCloudSettings().baseUr
 
 /** `<base>/api/<path>`，`path` 里不要带前导斜杠。 */
 export const resolveCloudApiUrl = (path: string): string => (
-    `${resolveCloudBaseUrl()}/api/${String(path).replace(/^\/+/, '')}`
+    `${resolveCloudBaseUrl()}/api/${path.replace(/^\/+/, '')}`
 );

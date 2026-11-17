@@ -28,7 +28,7 @@ const isLocalScheme = (src: string): boolean => LOCAL_SCHEMES.some((scheme) => s
  * 宁可降级成原生播放，也不要把一个可能污染的地址接进音频图。
  */
 export const isSameOriginAudioSource = (src: string, origin: string): boolean => {
-    const value = String(src ?? '').trim();
+    const value = (src ?? '').trim();
     if (!value) return false;
     if (isLocalScheme(value)) return true;
     if (!origin) return false;

@@ -9,7 +9,7 @@ const OFFICIAL_BRANCH_PATTERN = /^(?:main|release\/\d+\.\d+\.\d+)$/;
 
 /** 这条分支出来的包算不算正式版。分不清的一律按非正式版算，宁可多提醒一句。 */
 export const isOfficialBuildBranch = (branch: string | null | undefined): boolean => {
-    const value = String(branch ?? '').trim();
+    const value = (branch ?? '').trim();
     if (!value) return false;
     if (value === 'HEAD' || value.toLowerCase() === 'unknown') return false;
     return OFFICIAL_BRANCH_PATTERN.test(value);

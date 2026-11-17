@@ -104,6 +104,30 @@ export default tseslint.config(
         languageOptions: { sourceType: 'commonjs' },
     },
 
+    // 第三方原样引入的代码（crypto-es）：不改它的写法（UMD 壳的 define/window 声明、
+    // 空 catch、影子全局），核心规则整体关闭 —— 只保留语法层面的解析。
+    {
+        files: ['src/webBridge/vendor/**'],
+        rules: {
+            'no-empty': 'off',
+            'no-unused-vars': 'off',
+            'no-redeclare': 'off',
+            'no-shadow': 'off',
+            'no-undef': 'off',
+            'no-underscore-dangle': 'off',
+            'dedicatus/directive-comment': 'off',
+            '@stylistic/indent': 'off',
+            '@stylistic/quotes': 'off',
+            '@stylistic/linebreak-style': 'off',
+            '@stylistic/eol-last': 'off',
+        },
+        languageOptions: {
+            ecmaVersion: 'latest',
+            sourceType: 'module',
+            globals: { define: 'readonly' },
+        },
+    },
+
     // 桥的接口代码（src/webBridge/api/*.js）跑在服务端与浏览器两个环境里，
     // cookies.js / eapi.js 还会落到 Chrome 扩展与 WebView 上下文：chrome 是那里的宿主全局。
     {

@@ -73,7 +73,7 @@ export async function weapiRequest(path, data, cookieHeader) {
   });
   try {
     return await resp.json();
-  } catch (_) {
+  } catch {
     return {};
   }
 }

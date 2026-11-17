@@ -1152,6 +1152,7 @@ export default {
       "smart-beat-on": { "title": "智能动感模式：开启", "description": "开启智能动感模式（商籁、镜台按节拍，时计按鼓点驱动画面），没分析过的歌当场分析" },
       "visualizer-tempera": { "title": "切换到可视化：凝彩", "description": "切换到凝彩色块 PV 可视化" },
       "visualizer-lumiere": { "title": "切换到可视化：绘光", "description": "切换到绘光舞台光 PV 可视化" },
+    "visualizer-prompt": { "title": "切换到可视化：提示词", "description": "切换到提示词可视化（一句一个输入框）" },
       "visualizer-nebbia": { "title": "切换到可视化：雾笺", "description": "切换到雾笺：在起雾的公交车窗上写歌词" },
       "visualizer-metaphor": { "title": "切换到可视化：隐喻", "description": "切换到隐喻：融球、半调网点和颗粒组成的歌词，镜头硬切" },
       "visualizer-hanabi": { "title": "切换到可视化：花火", "description": "切换到花火烟花歌词 PV 可视化" },

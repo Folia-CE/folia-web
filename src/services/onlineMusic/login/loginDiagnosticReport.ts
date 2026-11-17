@@ -155,6 +155,29 @@ export const formatLoginSelfCheck = (selfCheck: LoginReportSelfCheck | null): st
     return [...lines, ...result.hosts.flatMap(formatSelfCheckHost)];
 };
 
+/**
+ * 原始 UA 串又长又难读（Edge 的还带着一串 Chrome 兼容标记）：诊断里给一行
+ * 「系统 · 浏览器」的摘要，够定位问题就行；原始串放下一行备查。
+ */
+const summarizeUserAgent = (userAgent: string): string => {
+    if (!userAgent) return 'unknown';
+    const browser = /Edg\/(\d+)/.exec(userAgent)?.[0]
+        ?? /OPR\/(\d+)/.exec(userAgent)?.[0]
+        ?? /Chrome\/(\d+)/.exec(userAgent)?.[0]
+        ?? /Firefox\/(\d+)/.exec(userAgent)?.[0]
+        ?? /Safari\/(\d+)/.exec(userAgent)?.[0];
+    const macVersion = /Mac OS X ([0-9_]+)/.exec(userAgent)?.[1]?.replace(/_/g, '.');
+    const androidVersion = /Android ([0-9.]+)/.exec(userAgent)?.[1];
+    const os = /Windows NT 10\.0/.test(userAgent) ? 'Windows 10/11'
+        : /Windows/.test(userAgent) ? 'Windows'
+        : macVersion ? `macOS ${macVersion}`
+        : androidVersion ? `Android ${androidVersion}`
+        : /(iPhone|iPad)/.test(userAgent) ? 'iOS'
+        : /Linux/.test(userAgent) ? 'Linux'
+        : 'unknown OS';
+    return `${os} · ${browser ?? 'unknown browser'}`;
+};
+
 // 把一次扫码会话排成可以直接贴进 GitHub issue 的 Markdown 文本。
 export const formatLoginDiagnosticReport = ({
     generatedAt,
@@ -193,7 +216,8 @@ export const formatLoginDiagnosticReport = ({
     `app: ${appVersion ?? 'unknown'}`,
     ...(build ? [`build: ${build}`] : []),
     ...(origin ? [`origin: ${origin}`] : []),
-    `user agent: ${userAgent || 'unknown'}`,
+    `user agent: ${summarizeUserAgent(userAgent)}`,
+    ...(userAgent ? [`  raw: ${userAgent}`] : []),
     `provider: ${providerId}${methodId ? ` (method ${methodId})` : ''}`,
     `failure: ${failure ?? 'none'}`,
     ...(loginFailure ? formatLoginFailure(loginFailure) : []),

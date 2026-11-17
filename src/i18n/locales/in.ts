@@ -1152,6 +1152,7 @@ export default {
       "smart-beat-on": { "title": "Mode ketukan pintar: Aktif", "description": "Aktifkan efek ketukan (Sonnet dan Diorama mengikuti ketukan, Pendolo mengikuti drum), lagu yang belum dianalisis dianalisis saat itu" },
       "visualizer-tempera": { "title": "Visualizer: Tempera", "description": "Alihkan ke PV lirik blok warna Tempera" },
       "visualizer-lumiere": { "title": "Visualizer: Lumiere", "description": "Alihkan ke PV lirik cahaya panggung Lumiere" },
+    "visualizer-prompt": { "title": "Visualizer: Prompt", "description": "Alihkan ke visualizer kotak prompt (satu kotak per baris)" },
       "visualizer-nebbia": { "title": "Visualizer: Nebbia", "description": "Alihkan ke Nebbia, lirik ditulis di jendela bus yang berembun" },
       "visualizer-metaphor": { "title": "Visualizer: Metaphor", "description": "Alihkan ke Metaphor, lirik dari tinta yang melebur, halftone, dan butiran, dengan potongan kamera yang tajam" },
       "visualizer-hanabi": { "title": "Visualizer: Hanabi", "description": "Alihkan ke PV lirik kembang api Hanabi" },

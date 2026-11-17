@@ -1152,6 +1152,7 @@ export default {
       "smart-beat-on": { "title": "Smart beat mode: On", "description": "Turn the beat effects on (Sonnet and Diorama on the beats, Pendolo on the drums), analysing a track not analysed yet" },
       "visualizer-tempera": { "title": "Visualizer: Tempera", "description": "Switch to the Tempera color-block lyric PV" },
       "visualizer-lumiere": { "title": "Visualizer: Lumiere", "description": "Switch to the Lumiere stage-light lyric PV" },
+    "visualizer-prompt": { "title": "Visualizer: Prompt", "description": "Switch to the prompt-box visualizer (one box per line)" },
       "visualizer-nebbia": { "title": "Visualizer: Nebbia", "description": "Switch to Nebbia, lyrics written on a fogged-up bus window" },
       "visualizer-metaphor": { "title": "Visualizer: Metaphor", "description": "Switch to Metaphor, lyrics of fusing ink, halftone and grain, cut hard between cameras" },
       "visualizer-hanabi": { "title": "Visualizer: Hanabi", "description": "Switch to the Hanabi fireworks lyric PV" },

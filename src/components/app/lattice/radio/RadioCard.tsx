@@ -137,12 +137,28 @@ function RadioCard({
     // （180° → 0°），不另翻。
     const [spin, setSpin] = useState<{ count: number; direction: 1 | -1 }>({ count: 0, direction: 1 });
     const [shown, setShown] = useState({ role, revealed });
+    // 揭开分两步：revealed 变 true 后先留在背面，让涂黑条滑开、字显出来（背面动画播完），
+    // 卡才翻到正面；翻过去之后封面再从模糊对焦到清晰。reduced-motion 或卡本来就正面朝上
+    // （played → now 的半圈翻不经过背面）时直接翻，不等。
+    const [flipReady, setFlipReady] = useState(revealed);
     if (shown.role !== role || shown.revealed !== revealed) {
         setShown({ role, revealed });
+        if (revealed && !shown.revealed) {
+            // 从盖着到揭开：先在背面跑涂黑条动画，播完才放行翻面。
+            setFlipReady(false);
+        }
         if (role === 'now' && shown.role !== 'now' && shown.revealed) {
             setSpin(value => ({ count: value.count + 1, direction: shown.role === 'played' ? 1 : -1 }));
         }
     }
+    const backRevealMs = 950;
+    useEffect(() => {
+        if (flipReady || !revealed || reducedMotion) return;
+        const timer = setTimeout(() => setFlipReady(true), backRevealMs);
+        return () => clearTimeout(timer);
+    }, [flipReady, reducedMotion, revealed]);
+    // 已经正面朝上的卡升为正在播放时翻半圈（不经过背面），放行条件直接满足。
+    const flipAngle = revealed && (flipReady || reducedMotion) ? 0 : 180;
     const [spinScope, animateSpin] = useAnimate<HTMLDivElement>();
     useEffect(() => {
         if (spin.count === 0 || reducedMotion) return;
@@ -160,7 +176,6 @@ function RadioCard({
             element.style.transform = '';
         };
     }, [animateSpin, reducedMotion, spin, spinScope]);
-    const faceAngle = revealed ? 0 : 180;
     // Metro 式的倾斜按压：指针所在的那一点往里压。正中那张大卡上有歌词和控制条，压得浅一些。
     const tilt = useRadioCardTilt({
         maxDeg: expanded ? 2.5 : 7,
@@ -287,8 +302,8 @@ function RadioCard({
                     <div ref={spinScope} className="lattice-radio-card-spin">
                         <motion.div
                             className="lattice-radio-card-inner"
-                            initial={entersFaceDown ? { rotateY: faceAngle + 180 } : false}
-                            animate={{ rotateY: faceAngle }}
+                            initial={entersFaceDown ? { rotateY: flipAngle + 180 } : false}
+                            animate={{ rotateY: flipAngle }}
                             transition={reducedMotion ? { duration: 0 } : FLIP_TRANSITION}
                         >
                             <article
@@ -299,7 +314,7 @@ function RadioCard({
                             >
                                 {/* 揭开那一下：封面叠一层高斯模糊、略放大的自己，落定后对焦到清晰。
                                     只在揭开（背面 → 正面）时跑这一次；reduced-motion 下不叠。 */}
-                                {revealed && !reducedMotion && coverUrl && (
+                                {revealed && flipReady && !reducedMotion && coverUrl && (
                                     <span
                                         key={`focus-${tile.id}`}
                                         className="lattice-radio-focus"

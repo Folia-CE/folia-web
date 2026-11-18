@@ -71,6 +71,8 @@ type RadioCardProps = {
 };
 
 const FLIP_TRANSITION = { duration: 0.55, ease: [0.4, 0, 0.2, 1] as const };
+/** 揭开到翻面之间留给背面打码条动画的时间：条滑开、字显出来播完了，卡才翻到正面。 */
+const BACK_REVEAL_MS = 950;
 const DEAL_SPRING = { type: 'spring' as const, stiffness: 240, damping: 30, mass: 0.9 };
 const PERSPECTIVE_PX = 1400;
 /** 倾斜按压用的透视：比翻牌近一些，压下去才看得出来。 */
@@ -151,10 +153,9 @@ function RadioCard({
             setSpin(value => ({ count: value.count + 1, direction: shown.role === 'played' ? 1 : -1 }));
         }
     }
-    const backRevealMs = 950;
     useEffect(() => {
         if (flipReady || !revealed || reducedMotion) return;
-        const timer = setTimeout(() => setFlipReady(true), backRevealMs);
+        const timer = setTimeout(() => setFlipReady(true), BACK_REVEAL_MS);
         return () => clearTimeout(timer);
     }, [flipReady, reducedMotion, revealed]);
     // 已经正面朝上的卡升为正在播放时翻半圈（不经过背面），放行条件直接满足。

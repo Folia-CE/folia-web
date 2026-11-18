@@ -297,6 +297,16 @@ function RadioCard({
                                 style={{ backgroundImage: coverUrl ? `url("${coverUrl}")` : undefined }}
                                 aria-hidden={!revealed}
                             >
+                                {/* 揭开那一下：封面叠一层高斯模糊、略放大的自己，落定后对焦到清晰。
+                                    只在揭开（背面 → 正面）时跑这一次；reduced-motion 下不叠。 */}
+                                {revealed && !reducedMotion && coverUrl && (
+                                    <span
+                                        key={`focus-${tile.id}`}
+                                        className="lattice-radio-focus"
+                                        style={{ backgroundImage: `url("${coverUrl}")` }}
+                                        aria-hidden
+                                    />
+                                )}
                                 <span className="lattice-poster-shade" />
                                 <span className="lattice-poster-lights-out" />
                                 <span className="lattice-poster-tint" />
@@ -341,8 +351,15 @@ function RadioCard({
                                 {cover.veil && <span className="lattice-radio-veil" />}
                                 <span className="lattice-radio-reeds" />
                                 <span className="lattice-radio-redaction">
-                                    <i style={{ width: `${redaction.title}%` }} />
-                                    <i style={{ width: `${redaction.artist}%` }} />
+                                    {/* 每条：涂黑条压在字上。揭开（.is-revealed）时条朝右滑走、字从左显出来。 */}
+                                    <i className="lattice-radio-redaction-line" style={{ width: `${redaction.title}%` }}>
+                                        <b className="lattice-radio-redaction-text">{tile.title}</b>
+                                        <b className="lattice-radio-redaction-bar" />
+                                    </i>
+                                    <i className="lattice-radio-redaction-line" style={{ width: `${redaction.artist}%` }}>
+                                        <b className="lattice-radio-redaction-text">{tile.artist}</b>
+                                        <b className="lattice-radio-redaction-bar" />
+                                    </i>
                                 </span>
                             </div>
                         </motion.div>
